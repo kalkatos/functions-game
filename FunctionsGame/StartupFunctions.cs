@@ -33,12 +33,3 @@ namespace Kalkatos.FunctionsGame
         }
     }
 }
-
-namespace Kalkatos.FunctionsGame.Models
-{
-    public class LoginRequest
-    {
-        public string DeviceId;
-        public string PlayerKey;
-    }
-}

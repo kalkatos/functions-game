@@ -1,0 +1,3 @@
+[submodule "FunctionsGame/Models"]
+	path = FunctionsGame/Models
+	url = https://github.com/kalkatos/functions-game-models.git
