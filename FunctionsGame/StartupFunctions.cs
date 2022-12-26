@@ -5,6 +5,7 @@ using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Kalkatos.FunctionsGame.Models;
+using Kalkatos.Network.Model;
 
 namespace Kalkatos.FunctionsGame
 {
@@ -22,7 +23,7 @@ namespace Kalkatos.FunctionsGame
                 identifier = "<empty>";
 			log.LogInformation($"Request with identifier: {identifier}");
             if (isNullId)
-                return new BadRequestObjectResult(new LoginError { Tag = LoginErrorTag.NullIdentifier, Message = "Identifier is null. Must be an unique identifier of the user." });
+                return new BadRequestObjectResult(new NetworkError { Tag = NetworkErrorTag.WrongParameters, Message = "Identifier is null. Must be an unique identifier of the user." });
 
             await Task.Delay(100);
 
