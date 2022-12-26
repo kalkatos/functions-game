@@ -1,12 +1,10 @@
 using System;
-using System.IO;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
+using Kalkatos.FunctionsGame.Models;
 
 namespace Kalkatos.FunctionsGame
 {
@@ -14,22 +12,23 @@ namespace Kalkatos.FunctionsGame
     {
         [FunctionName(nameof(LogIn))]
         public static async Task<IActionResult> LogIn (
-            [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] HttpRequest req,
+            [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string identifier,
             ILogger log)
         {
             log.LogInformation("C# HTTP trigger function processed a request.");
 
-            string name = req.Query["name"];
+            bool isNullId = string.IsNullOrEmpty(identifier);
+			if (isNullId)
+                identifier = "<empty>";
+			log.LogInformation($"Request with identifier: {identifier}");
+            if (isNullId)
+                return new BadRequestObjectResult(new LoginError { Tag = LoginErrorTag.NullIdentifier, Message = "Identifier is null. Must be an unique identifier of the user." });
 
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            dynamic data = JsonConvert.DeserializeObject(requestBody);
-            name = name ?? data?.name;
+            await Task.Delay(100);
 
-            string responseMessage = string.IsNullOrEmpty(name)
-                ? "This HTTP triggered function executed successfully. Pass a name in the query string or in the request body for a personalized response."
-                : $"Hello, {name}. This HTTP triggered function executed successfully.";
+            LoginResponse response = new LoginResponse { IsNewUser = true, SessionKey = Guid.NewGuid().ToString() };
 
-            return new OkObjectResult(responseMessage);
+            return new OkObjectResult(response);
         }
     }
 }
