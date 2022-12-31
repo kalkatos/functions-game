@@ -23,11 +23,7 @@ namespace Kalkatos.FunctionsGame
 		{
 			log.LogInformation("Executing login.");
 
-			bool isNullId = string.IsNullOrEmpty(identifier);
-			if (isNullId)
-				identifier = "<empty>";
-			log.LogInformation($"Request with identifier: {identifier}");
-			if (isNullId)
+			if (Helper.VerifyNullParameter(identifier, log))
 				return new BadRequestObjectResult(new NetworkError { Tag = NetworkErrorTag.WrongParameters, Message = "Identifier is null. Must be an unique user identifier." });
 
 			// Access players blob
@@ -54,11 +50,11 @@ namespace Kalkatos.FunctionsGame
 				log.LogInformation("Returning user! ===> ");
 				// Existing user
 				using Stream stream = await identifierFile.OpenReadAsync();
-				string playerId = ReadBytes(stream);
+				string playerId = Helper.ReadBytes(stream);
 				// Update last access time
 				BlockBlobClient playerFile = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{playerId}.json");
 				using Stream stream2 = await playerFile.OpenReadAsync();
-				string registrySerialized = ReadBytes(stream2);
+				string registrySerialized = Helper.ReadBytes(stream2);
 				playerRegistry = JsonConvert.DeserializeObject<PlayerRegistry>(registrySerialized);
 				playerRegistry.LastAccess = DateTime.UtcNow;
 				registrySerialized = JsonConvert.SerializeObject(playerRegistry);
@@ -71,23 +67,5 @@ namespace Kalkatos.FunctionsGame
 			return new OkObjectResult(response);
 		}
 
-		private static string ReadBytes (Stream stream)
-		{
-			byte[] bytes = new byte[stream.Length];
-			int numBytesToRead = (int)stream.Length;
-			int numBytesRead = 0;
-			while (numBytesToRead > 0)
-			{
-				// Read may return anything from 0 to numBytesToRead.
-				int n = stream.Read(bytes, numBytesRead, numBytesToRead);
-
-				// Break when the end of the file is reached.
-				if (n == 0)
-					break;
-				numBytesRead += n;
-				numBytesToRead -= n;
-			}
-			return Encoding.UTF8.GetString(bytes);
-		}
 	}
 }
