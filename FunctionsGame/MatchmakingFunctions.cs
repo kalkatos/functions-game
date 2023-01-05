@@ -76,11 +76,13 @@ namespace Kalkatos.FunctionsGame
 			switch (matchmakingResult)
 			{
 				case TableMatchmakingResult.NoPlayers:
+					// TODO Match with bots
 				case TableMatchmakingResult.UnmatchedPlayersWaiting:
-					log.LogInformation($"Execution number {info.ExecutionCount}. Scheduling next attempt to match players.");
 					info.ExecutionCount++;
+					log.LogInformation($"Execution number {info.ExecutionCount}. Scheduling next attempt to match players.");
 					break;
 				case TableMatchmakingResult.PlayersMatched:
+					info.ExecutionCount = 0;
 					log.LogInformation($"Players Matched!!!");
 					break;
 			}

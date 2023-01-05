@@ -27,7 +27,7 @@ namespace Kalkatos.FunctionsGame
 				return new BadRequestObjectResult(new NetworkError { Tag = NetworkErrorTag.WrongParameters, Message = "Identifier is null. Must be an unique user identifier." });
 
 			// Access players blob
-			BlockBlobClient identifierFile = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{identifier}.txt");
+			BlockBlobClient identifierFile = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{identifier}");
 			PlayerRegistry playerRegistry;
 
 			if (!await identifierFile.ExistsAsync())
@@ -35,7 +35,7 @@ namespace Kalkatos.FunctionsGame
 				// New user. Save identifier pointing to player id
 				string newPlayerId = Guid.NewGuid().ToString();
 				using Stream stream = await identifierFile.OpenWriteAsync(true);
-				stream.Write(Encoding.UTF8.GetBytes(newPlayerId), 0, newPlayerId.Length);
+				stream.Write(Encoding.ASCII.GetBytes(newPlayerId), 0, newPlayerId.Length);
 
 				// Save player id pointing to player registry with identifier as one device
 				BlockBlobClient playerFile = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{newPlayerId}.json");
@@ -43,7 +43,7 @@ namespace Kalkatos.FunctionsGame
 					FirstAccess = DateTime.UtcNow };
 				string registrySerialized = JsonConvert.SerializeObject(playerRegistry);
 				using Stream stream2 = await playerFile.OpenWriteAsync(true);
-				stream2.Write(Encoding.UTF8.GetBytes(registrySerialized), 0, registrySerialized.Length);
+				stream2.Write(Encoding.ASCII.GetBytes(registrySerialized), 0, registrySerialized.Length);
 			}
 			else
 			{
@@ -59,7 +59,7 @@ namespace Kalkatos.FunctionsGame
 				playerRegistry.LastAccess = DateTime.UtcNow;
 				registrySerialized = JsonConvert.SerializeObject(playerRegistry);
 				using Stream stream3 = await playerFile.OpenWriteAsync(true);
-				stream3.Write(Encoding.UTF8.GetBytes(registrySerialized), 0, registrySerialized.Length);
+				stream3.Write(Encoding.ASCII.GetBytes(registrySerialized), 0, registrySerialized.Length);
 			}
 
 			LoginResponse response = new LoginResponse { IsAuthenticated = playerRegistry.IsAuthenticated, PlayerId = playerRegistry.PlayerId };
