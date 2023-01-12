@@ -2,11 +2,13 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs.Specialized;
+using FunctionsGame.NetworkModel;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.DurableTask;
@@ -26,31 +28,55 @@ namespace Kalkatos.FunctionsGame
 		{
 			log.LogInformation($"Executing Find Match.");
 
+			// Get player region and other matchmaking related info
 			BlockBlobClient playerInfoFile = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{playerId}.json");
-			// TODO Get player region and other matchmaking related info
-			string playerRegion = "en";
-			
+			using Stream stream = await playerInfoFile.OpenReadAsync();
+			string playerRegistrySerialized = Helper.ReadBytes(stream);
+			PlayerRegistry playerRegistry = JsonConvert.DeserializeObject<PlayerRegistry>(playerRegistrySerialized);
+			string playerRegion = playerRegistry.Region;
+
 			// Check if there is an entry in matchmaking for this player, if not add one
 			TableClient matchmakingTable = new TableClient("UseDevelopmentStorage=true", "matchmaking");
 			var playerQuery = matchmakingTable.QueryAsync<PlayerLookForMatchEntity>((entity) => entity.PartitionKey == playerRegion && entity.RowKey == playerId);
 			var playerQueryEnumerator = playerQuery.GetAsyncEnumerator();
 			if (!await playerQueryEnumerator.MoveNextAsync())
-				await matchmakingTable.AddEntityAsync(new PlayerLookForMatchEntity { PartitionKey = playerRegion, RowKey = playerId });
+			{
+				log.LogInformation($"No matchmaking registered for player. Registering...");
+				await matchmakingTable.AddEntityAsync(new PlayerLookForMatchEntity { PartitionKey = playerRegion, RowKey = playerId, Status = (int)MatchmakingStatus.Searching }); 
+			}
 			else
+			{
+				log.LogInformation($"There is an entry for this player in matchmaking table...");
+				PlayerLookForMatchEntity entry = playerQueryEnumerator.Current;
 				// TODO Check if the entry for this player is too old, case which we should get another one
-				log.LogInformation($"Player is already registered for matchmaking.");
+				switch (entry.Status)
+				{
+					case (int)MatchmakingStatus.Searching:
+					case (int)MatchmakingStatus.Matched:
+						log.LogInformation($"Player is already registered for matchmaking.");
+						break;
+					case (int)MatchmakingStatus.Backfilling:
+						break;
+					case (int)MatchmakingStatus.Failed:
+					case (int)MatchmakingStatus.FailedWithNoPlayers:
+						log.LogInformation($"Renewing player matchmaking entry.");
+						playerQueryEnumerator.Current.Status = (int)MatchmakingStatus.Searching;
+						await matchmakingTable.UpdateEntityAsync(entry, entry.ETag, TableUpdateMode.Replace);
+						break;
+				}
+			}
 
 			// Check orchestrator
 			string orchestratorId = $"Orchestrator-{playerRegion}";
 			DurableOrchestrationStatus functionStatus = await durableFunctionsClient.GetStatusAsync(orchestratorId);
 
-			if (functionStatus == null 
-				|| functionStatus.RuntimeStatus == OrchestrationRuntimeStatus.Completed 
+			if (functionStatus == null
+				|| functionStatus.RuntimeStatus == OrchestrationRuntimeStatus.Completed
 				|| functionStatus.RuntimeStatus == OrchestrationRuntimeStatus.Failed
 				|| functionStatus.RuntimeStatus == OrchestrationRuntimeStatus.Terminated)
 			{
 				log.LogInformation($"No orchestrator running for this region ({playerRegion}), starting a new one.");
-				await durableFunctionsClient.StartNewAsync(nameof(RunOrchestrator), orchestratorId, new OrchestratorInfo { ExecutionCount = 0, Region = playerRegion });
+				await durableFunctionsClient.StartNewAsync(nameof(MatchmakingOrchestrator), orchestratorId, new OrchestratorInfo { ExecutionCount = 0, Region = playerRegion });
 			}
 			else
 				log.LogInformation($"Orchestrator already running for region ({playerRegion}). Json = {JsonConvert.SerializeObject(functionStatus)}");
@@ -60,36 +86,39 @@ namespace Kalkatos.FunctionsGame
 
 		#region Orchestrator ======================================================================================
 
-		[FunctionName(nameof(RunOrchestrator))]
-		public static async Task RunOrchestrator (
+		[FunctionName(nameof(MatchmakingOrchestrator))]
+		public static async Task MatchmakingOrchestrator (
 			[OrchestrationTrigger] IDurableOrchestrationContext context,
 			ILogger log)
 		{
+			OrchestratorInfo info = context.GetInput<OrchestratorInfo>();
+			if (info.Rules == null)
+				info.Rules = await context.CallActivityAsync<ServerRules>(nameof(GetServerRules), null);
+
 			// Wait to check
-			DateTime nextCheck = context.CurrentUtcDateTime.AddSeconds(2);
+			DateTime nextCheck = context.CurrentUtcDateTime.AddSeconds(info.Rules.DelayBetweenAttempts);
 			await context.CreateTimer(nextCheck, CancellationToken.None);
 
 			log.LogInformation($"Starting new orchestration run.");
 
-			OrchestratorInfo info = context.GetInput<OrchestratorInfo>();
-			TableMatchmakingResult matchmakingResult = await context.CallActivityAsync<TableMatchmakingResult>(nameof(PairPlayersInTable), info.Region);
+
+			TableMatchmakingResult matchmakingResult = await context.CallActivityAsync<TableMatchmakingResult>(nameof(PairPlayersInTable), info);
 			switch (matchmakingResult)
 			{
 				case TableMatchmakingResult.NoPlayers:
-					// TODO Match with bots
 				case TableMatchmakingResult.UnmatchedPlayersWaiting:
 					info.ExecutionCount++;
-					log.LogInformation($"Execution number {info.ExecutionCount}. Scheduling next attempt to match players.");
+					log.LogInformation($"Execution number {info.ExecutionCount}.");
 					break;
+				case TableMatchmakingResult.PlayersMatchedWithBots:
 				case TableMatchmakingResult.PlayersMatched:
 					info.ExecutionCount = 0;
 					log.LogInformation($"Players Matched!!!");
 					break;
 			}
-
-			int maxAttempts = 5;
-			// Try 5 times while no player is found to match
-			if (info.ExecutionCount < maxAttempts)
+			
+			// Try X times while no player is found to match
+			if (info.ExecutionCount < info.Rules.MaxAttempts)
 				context.ContinueAsNew(info);
 			else
 				log.LogInformation($"The orchestrator has reached max attempts and is finishing off.");
@@ -97,54 +126,124 @@ namespace Kalkatos.FunctionsGame
 
 		[FunctionName(nameof(PairPlayersInTable))]
 		public static TableMatchmakingResult PairPlayersInTable (
-			[ActivityTrigger] string region,
+			[ActivityTrigger] OrchestratorInfo info,
 			[Table("matchmaking", Connection = "AzureWebJobsStorage")] TableClient tableClient,
-			//[Blob("matches", FileAccess.Write, Connection = "AzureWebJobsStorage")] BlobBaseClient matchesBlob,
+			[Blob("rules/server-rules.json", FileAccess.Read, Connection = "AzureWebJobsStorage")] string serializedRules,
 			ILogger log)
 		{
 			log.LogInformation("Looking for players to match.");
-			var query = tableClient.Query<PlayerLookForMatchEntity>((entity) => entity.PartitionKey == region);
+
+			// Get players looking for match
+			int searchingStatus = (int)MatchmakingStatus.Searching;
+			var query = tableClient.Query<PlayerLookForMatchEntity>((entity) => entity.PartitionKey == info.Region && entity.Status == searchingStatus);
 			if (query.Count() == 0)
 			{
 				log.LogInformation("No players to match.");
 				return TableMatchmakingResult.NoPlayers;
 			}
-			List<string> matchingPlayersList = new List<string>();
+
+			// Get server rules
+			ServerRules rules = JsonConvert.DeserializeObject<ServerRules>(serializedRules);
+			List<PlayerLookForMatchEntity> matchingPlayersList = new List<PlayerLookForMatchEntity>();
 			bool hadAMatch = false;
+			// Run through query matching available players
 			foreach (var item in query)
 			{
 				string currentPlayer = item.RowKey;
-				if (matchingPlayersList.Contains(currentPlayer) || !string.IsNullOrEmpty(item.MatchId))
+				if (matchingPlayersList.Find(p => p.RowKey == currentPlayer) != null || !string.IsNullOrEmpty(item.MatchId) || item.Status != (int)MatchmakingStatus.Searching)
 					continue;
-				matchingPlayersList.Add(currentPlayer);
-				// TODO ↓↓↓↓↓↓ Adapt for more players. Get this number from game rules 
-				if (matchingPlayersList.Count == 2)
+				matchingPlayersList.Add(item);
+				// TODO Backfill
+				if (matchingPlayersList.Count == rules.MinPlayerCount)
 				{
-					log.LogInformation($"Players matching: {JsonConvert.SerializeObject(matchingPlayersList)}");
-					var p1 = tableClient.GetEntity<PlayerLookForMatchEntity>(region, matchingPlayersList[0]).Value;
-					var p2 = tableClient.GetEntity<PlayerLookForMatchEntity>(region, matchingPlayersList[1]).Value;
+					string playerList = JsonConvert.SerializeObject(matchingPlayersList);
+					log.LogInformation($"Players matching: {playerList}");
 					string newMatchId = Guid.NewGuid().ToString();
-					string p1Alias = Guid.NewGuid().ToString();
-					string p2Alias = Guid.NewGuid().ToString();
-					p1.MatchId = newMatchId;
-					p2.MatchId = newMatchId;
-					p1.MyAlias = p1Alias;
-					p2.MyAlias = p2Alias;
-					log.LogInformation($"Starting updates... ...");
-					tableClient.UpdateEntity(p1, p1.ETag, TableUpdateMode.Replace);
-					tableClient.UpdateEntity(p2, p2.ETag, TableUpdateMode.Replace);
-					// TODO Create the match in blob container
-					log.LogInformation($"Matched players {matchingPlayersList[0].Substring(0, 8)}+ and {matchingPlayersList[1].Substring(0, 8)}+ in match {newMatchId}");
+					CreateMatch(matchingPlayersList);
+					log.LogInformation($"Matched players in match {newMatchId} === {playerList}");
 					matchingPlayersList.Clear();
 					hadAMatch = true;
 				}
 			}
 			if (hadAMatch)
 				return TableMatchmakingResult.PlayersMatched;
+
+			if (info.ExecutionCount == rules.MaxAttempts - 1)
+			{
+				if (rules.ActionForNoPlayers == MatchmakingNoPlayerAction.MatchWithBots)
+				{
+					// Check if it's everything alright with the number of players and min number of players
+					if (rules.MinPlayerCount < matchingPlayersList.Count)
+						log.LogWarning($"Something is wrong: {rules.MinPlayerCount} is less than {matchingPlayersList.Count}");
+
+					log.LogInformation($"Max attempts reached ({rules.MaxAttempts}). Filling with bots.");
+					int numberOfBots = rules.MinPlayerCount - matchingPlayersList.Count;
+					// Create bot in table
+					for (int i = 0; i < numberOfBots; i++)
+					{
+						// Add bot entry to the matchmaking table
+						string botId = Guid.NewGuid().ToString();
+						PlayerLookForMatchEntity botEntity = new PlayerLookForMatchEntity { PartitionKey = info.Region, RowKey = botId };
+						tableClient.AddEntity(botEntity);
+						matchingPlayersList.Add(tableClient.GetEntity<PlayerLookForMatchEntity>(info.Region, botId).Value);
+
+						//TODO Register each bot
+					}
+					CreateMatch(matchingPlayersList);
+					matchingPlayersList.Clear();
+					return TableMatchmakingResult.PlayersMatchedWithBots;
+				}
+
+				log.LogInformation($"Max attempts reached ({rules.MaxAttempts}). Returning failed matchmaking state.");
+				foreach (var item in matchingPlayersList)
+				{
+					item.Status = (int)MatchmakingStatus.FailedWithNoPlayers;
+					tableClient.UpdateEntity(item, item.ETag, TableUpdateMode.Replace);
+				}
+				return TableMatchmakingResult.NoPlayers;
+			}
 			log.LogInformation($"Not enough players to match ({matchingPlayersList.Count}).");
 			return TableMatchmakingResult.UnmatchedPlayersWaiting;
+
+			void CreateMatch (List<PlayerLookForMatchEntity> entities)
+			{
+				string newMatchId = Guid.NewGuid().ToString();
+
+				string[] players = new string[entities.Count];
+				for (int i = 0; i < entities.Count; i++)
+				{
+					PlayerLookForMatchEntity entity = entities[i];
+					string alias = Guid.NewGuid().ToString();
+					entity.MatchId = newMatchId;
+					entity.MyAlias = alias;
+					entity.Status = (int)MatchmakingStatus.Matched;
+					tableClient.UpdateEntity(entity, entity.ETag, TableUpdateMode.Replace);
+					players[i] = alias;
+				}
+
+				// Create the match in blob container
+				MatchRegistry matchInfo = new MatchRegistry
+				{
+					MatchId = newMatchId,
+					Players = players
+				};
+				BlockBlobClient blobClient = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{newMatchId}.json");
+				using Stream stream = blobClient.OpenWrite(true);
+				stream.Write(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(matchInfo)));
+			}
 		}
 
+		[FunctionName(nameof(GetServerRules))]
+		public static ServerRules GetServerRules (
+			[ActivityTrigger] string input,
+			[Blob("rules/server-rules.json", FileAccess.Read, Connection = "AzureWebJobsStorage")] string readInfo,
+			ILogger log)
+		{
+			log.LogInformation($"{nameof(GetServerRules)} === {readInfo}");
+			return JsonConvert.DeserializeObject<ServerRules>(readInfo);
+		}
+
+		/*
 		[FunctionName(nameof(ReadData))]
 		public static string ReadData (
 			[ActivityTrigger] string input,
@@ -164,38 +263,82 @@ namespace Kalkatos.FunctionsGame
 			output = input;
 			log.LogInformation($"=========>   Writen: {input}");
 		}
+		*/
 
 		#endregion =======================================================================================
+
+		[FunctionName(nameof(GetMatch))]
+		public static async Task<string> GetMatch (
+			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string playerId,
+			[Table("matchmaking", Connection = "AzureWebJobsStorage")] TableClient tableClient,
+			ILogger log
+			)
+		{
+			// TODO Get the match id of the match to which that player is assigned in the matchmaking table
+
+			// TODO Get the match with the id in the matches blob
+			//BlockBlobClient blobClient = new BlockBlobClient("UseDevelopmentStorage=true", "matches");
+
+			// TODO Return the match serialized 
+
+			await Task.Delay(500);
+			return null;
+		}
+
+		// TODO Function to update ServerRules
 	}
 
 	public enum TableMatchmakingResult
 	{
 		NoPlayers,
 		PlayersMatched,
+		PlayersMatchedWithBots,
 		UnmatchedPlayersWaiting
 	}
 
-	internal class OrchestratorInfo
+	public enum MatchmakingStatus
+	{
+		Searching = 0,
+		Matched = 1,
+		Backfilling = 2,
+		Failed = 3,
+		FailedWithNoPlayers = 4,
+	}
+
+	public class OrchestratorInfo
 	{
 		public string Region;
 		public int ExecutionCount;
+		public ServerRules Rules;
 	}
 
-	internal class PlayerLookForMatchEntity : ITableEntity
+	public class PlayerLookForMatchEntity : ITableEntity
 	{
 		public string PartitionKey { get; set; } // Player region & other matchmaking data
 		public string RowKey { get; set; } // Player ID
 		public string MatchId { get; set; }
 		public string MyAlias { get; set; } // This player alias in that match
+		public int Status { get; set; }
 		public DateTimeOffset? Timestamp { get; set; }
 		public ETag ETag { get; set; }
 	}
 
-	//public class OrchestratorStatusEntity : ITableEntity
-	//{
-	//	public string PartitionKey { get; set; } // Player region & other matchmaking data
-	//	public string RowKey { get; set; } // Anything
-	//	public DateTimeOffset? Timestamp { get; set; }
-	//	public ETag ETag { get; set; }
-	//}
+	public class ServerRules
+	{
+		// Matchmaking
+		public float DelayBetweenAttempts { get; set; }
+		public int MaxAttempts { get; set; }
+		public int MinPlayerCount { get; set; }
+		public int MaxPlayerCount { get; set; }
+		public bool HasBackfill { get; set; }
+		public float WaitingTimeForBackfill { get; set; }
+		public bool DoBackfillWithBots { get; set; }
+		public MatchmakingNoPlayerAction ActionForNoPlayers { get; set; }
+	}
+
+	public enum MatchmakingNoPlayerAction
+	{
+		ReturnFailed,
+		MatchWithBots,
+	}
 }
