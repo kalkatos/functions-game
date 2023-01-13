@@ -42,7 +42,13 @@ namespace Kalkatos.FunctionsGame
 			if (!await playerQueryEnumerator.MoveNextAsync())
 			{
 				log.LogInformation($"No matchmaking registered for player. Registering...");
-				await matchmakingTable.AddEntityAsync(new PlayerLookForMatchEntity { PartitionKey = playerRegion, RowKey = playerId, Status = (int)MatchmakingStatus.Searching }); 
+				await matchmakingTable.AddEntityAsync(new PlayerLookForMatchEntity
+				{
+					PartitionKey = playerRegion, 
+					RowKey = playerId, 
+					PlayerAlias = playerRegistry.PlayerAlias,
+					Status = (int)MatchmakingStatus.Searching 
+				}); 
 			}
 			else
 			{
@@ -183,11 +189,19 @@ namespace Kalkatos.FunctionsGame
 					{
 						// Add bot entry to the matchmaking table
 						string botId = Guid.NewGuid().ToString();
-						PlayerLookForMatchEntity botEntity = new PlayerLookForMatchEntity { PartitionKey = info.Region, RowKey = botId };
+						string botAlias = Guid.NewGuid().ToString();
+						PlayerLookForMatchEntity botEntity = new PlayerLookForMatchEntity 
+						{ 
+							PartitionKey = info.Region, 
+							RowKey = botId, 
+							PlayerAlias = botAlias, 
+							Status = (int)MatchmakingStatus.Matched 
+						};
 						tableClient.AddEntity(botEntity);
 						matchingPlayersList.Add(tableClient.GetEntity<PlayerLookForMatchEntity>(info.Region, botId).Value);
 
 						//TODO Register each bot
+
 					}
 					CreateMatch(matchingPlayersList);
 					matchingPlayersList.Clear();
@@ -213,12 +227,10 @@ namespace Kalkatos.FunctionsGame
 				for (int i = 0; i < entities.Count; i++)
 				{
 					PlayerLookForMatchEntity entity = entities[i];
-					string alias = Guid.NewGuid().ToString();
 					entity.MatchId = newMatchId;
-					entity.MyAlias = alias;
 					entity.Status = (int)MatchmakingStatus.Matched;
 					tableClient.UpdateEntity(entity, entity.ETag, TableUpdateMode.Replace);
-					players[i] = alias;
+					players[i] = entity.PlayerAlias;
 				}
 
 				// Create the match in blob container
@@ -316,8 +328,8 @@ namespace Kalkatos.FunctionsGame
 	{
 		public string PartitionKey { get; set; } // Player region & other matchmaking data
 		public string RowKey { get; set; } // Player ID
+		public string PlayerAlias { get; set; }
 		public string MatchId { get; set; }
-		public string MyAlias { get; set; } // This player alias in that match
 		public int Status { get; set; }
 		public DateTimeOffset? Timestamp { get; set; }
 		public ETag ETag { get; set; }

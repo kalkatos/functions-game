@@ -37,6 +37,7 @@ namespace Kalkatos.FunctionsGame
 			{
 				// New user. Save identifier pointing to player id
 				string newPlayerId = Guid.NewGuid().ToString();
+				string newPlayerAlias = Guid.NewGuid().ToString();
 				using Stream stream = await identifierFile.OpenWriteAsync(true);
 				stream.Write(Encoding.ASCII.GetBytes(newPlayerId), 0, newPlayerId.Length);
 
@@ -44,7 +45,9 @@ namespace Kalkatos.FunctionsGame
 				BlockBlobClient playerFile = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{newPlayerId}.json");
 				playerRegistry = new PlayerRegistry 
 				{ 
-					PlayerId = newPlayerId, 
+					PlayerId = newPlayerId,
+					PlayerAlias = newPlayerAlias,
+					Nickname = playerConnectInfo.Nickname,
 					Devices = new string[] { playerConnectInfo.Identifier }, 
 					Region = playerConnectInfo.Region,
 					LastAccess = DateTime.UtcNow,
@@ -81,5 +84,14 @@ namespace Kalkatos.FunctionsGame
 			return new OkObjectResult(response);
 		}
 
+		[FunctionName(nameof(LoadGameData))]
+		public static async Task<IActionResult> LoadGameData (
+			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string connectInfoSerialized,
+			ILogger log)
+		{
+
+			await Task.Delay(100);
+			return new OkObjectResult("Ok");
+		}
 	}
 }
