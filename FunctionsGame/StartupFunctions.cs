@@ -79,7 +79,12 @@ namespace Kalkatos.FunctionsGame
 				log.LogInformation("Player registry saved === " + registrySerialized);
 			}
 
-			LoginResponse response = new LoginResponse { IsAuthenticated = playerRegistry.IsAuthenticated, PlayerId = playerRegistry.PlayerId };
+			LoginResponse response = new LoginResponse 
+			{
+				IsAuthenticated = playerRegistry.IsAuthenticated, 
+				PlayerId = playerRegistry.PlayerId,
+				SavedNickname = playerRegistry.Nickname,
+			};
 
 			return new OkObjectResult(response);
 		}
@@ -91,6 +96,22 @@ namespace Kalkatos.FunctionsGame
 		{
 
 			await Task.Delay(100);
+			return new OkObjectResult("Ok");
+		}
+
+		[FunctionName(nameof(SetNickname))]
+		public static async Task<IActionResult> SetNickname (
+			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] PlayerConnectInfo playerConnectInfo,
+			ILogger log)
+		{
+			BlockBlobClient playersBlob = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{playerConnectInfo.Identifier}.json");
+			using Stream stream = await playersBlob.OpenReadAsync();
+			string registrySerialized = Helper.ReadBytes(stream);
+			PlayerRegistry registry = JsonConvert.DeserializeObject<PlayerRegistry>(registrySerialized);
+			registry.Nickname = playerConnectInfo.Nickname;
+			using Stream writeStream = await playersBlob.OpenWriteAsync(true);
+			writeStream.Write(Encoding.ASCII.GetBytes(registrySerialized));
+
 			return new OkObjectResult("Ok");
 		}
 	}
