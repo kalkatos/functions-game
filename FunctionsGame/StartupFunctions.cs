@@ -83,6 +83,7 @@ namespace Kalkatos.FunctionsGame
 			{
 				IsAuthenticated = playerRegistry.IsAuthenticated, 
 				PlayerId = playerRegistry.PlayerId,
+				PlayerAlias = playerRegistry.PlayerAlias,
 				SavedNickname = playerRegistry.Nickname,
 			};
 
