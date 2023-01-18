@@ -101,14 +101,21 @@ namespace Kalkatos.FunctionsGame
 
 		[FunctionName(nameof(SetNickname))]
 		public static async Task<IActionResult> SetNickname (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] LoginRequest loginRequest,
+			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] SetNicknameRequest request,
 			ILogger log)
 		{
-			BlockBlobClient playersBlob = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{loginRequest.Identifier}.json");
-			using Stream stream = await playersBlob.OpenReadAsync();
-			string registrySerialized = Helper.ReadBytes(stream);
+			// Get file
+			BlockBlobClient playersBlob = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{request.PlayerId}.json");
+
+			// Check if exists
+			if (!await playersBlob.ExistsAsync())
+				return new NotFoundObjectResult("Player not found.");
+
+			// Read and Write new nickname
+			using Stream readStream = await playersBlob.OpenReadAsync();
+			string registrySerialized = Helper.ReadBytes(readStream);
 			PlayerRegistry registry = JsonConvert.DeserializeObject<PlayerRegistry>(registrySerialized);
-			registry.Nickname = loginRequest.Nickname;
+			registry.Nickname = request.Nickname;
 			using Stream writeStream = await playersBlob.OpenWriteAsync(true);
 			writeStream.Write(Encoding.ASCII.GetBytes(registrySerialized));
 
