@@ -8,17 +8,17 @@ using System.Threading.Tasks;
 using Azure;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs.Specialized;
-using FunctionsGame.NetworkModel;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Kalkatos.FunctionsGame.Registry;
 
 namespace Kalkatos.FunctionsGame
 {
-	public static class MatchmakingFunctions
+    public static class MatchmakingFunctions
 	{
 		[FunctionName(nameof(FindMatch))]
 		public static async Task<IActionResult> FindMatch (
@@ -237,7 +237,10 @@ namespace Kalkatos.FunctionsGame
 				MatchRegistry matchInfo = new MatchRegistry
 				{
 					MatchId = newMatchId,
-					Players = players
+					Players = players,
+					IsEnded = false,
+					CreatedTime = DateTime.UtcNow,
+					LastUpdatedTime = DateTime.UtcNow,
 				};
 				BlockBlobClient blobClient = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{newMatchId}.json");
 				using Stream stream = blobClient.OpenWrite(true);
