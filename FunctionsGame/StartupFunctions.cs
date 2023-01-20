@@ -9,7 +9,6 @@ using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Azure.Storage.Blobs.Specialized;
 using Newtonsoft.Json;
-using Kalkatos.FunctionsGame.Models;
 using Kalkatos.Network.Model;
 using Kalkatos.FunctionsGame.Registry;
 
