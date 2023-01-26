@@ -286,37 +286,39 @@ namespace Kalkatos.FunctionsGame
 
 		[FunctionName(nameof(GetMatch))]
 		public static async Task<string> GetMatch (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] MatchRequest matchRequest,
+			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
 			[Table("matchmaking", Connection = "AzureWebJobsStorage")] TableClient tableClient,
 			ILogger log
 			)
 		{
-			if (matchRequest == null || string.IsNullOrEmpty(matchRequest.PlayerId))
+			MatchRequest request = JsonConvert.DeserializeObject<MatchRequest>(requestSerialized);
+
+			if (request == null || string.IsNullOrEmpty(request.PlayerId))
 			{
-				log.LogInformation($"Wrong Parameters. Request = {matchRequest}, Player ID = {matchRequest?.PlayerId ?? "<empty>"}");
+				log.LogInformation($"Wrong Parameters. Request = {request}, Player ID = {request?.PlayerId ?? "<empty>"}");
 				return JsonConvert.SerializeObject(new MatchResponse { IsError = true, ErrorMessage = "Wrong Parameters." }); 
 			}
 
-			if (string.IsNullOrEmpty(matchRequest.MatchId))
+			if (string.IsNullOrEmpty(request.MatchId))
 			{
 				// Get the match id of the match to which that player is assigned in the matchmaking table
-				var query = tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == matchRequest.PlayerId);
+				var query = tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == request.PlayerId);
 				if (query == null || query.Count() == 0)
 				{
 					log.LogInformation($"Found no match. Query = {query}");
 					return JsonConvert.SerializeObject(new MatchResponse { IsError = true, ErrorMessage = $"Didn't find any match for player." }); 
 				}
 				if (query.Count() > 1)
-					log.LogWarning($"More than one entry in matchmaking found! Player = {matchRequest.PlayerId} Query = {query}");
+					log.LogWarning($"More than one entry in matchmaking found! Player = {request.PlayerId} Query = {query}");
 
 				var playerEntry = query.First();
 				string matchId = playerEntry.MatchId;
-				matchRequest.MatchId = matchId;
+				request.MatchId = matchId;
 				log.LogInformation($"Found a match: {matchId}");
 			}
 
 			// Get the match with the id in the matches blob
-			BlockBlobClient matchesBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{matchRequest.MatchId}.json");
+			BlockBlobClient matchesBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{request.MatchId}.json");
 			string[] players = null;
 			using (Stream stream = await matchesBlob.OpenReadAsync())
 			{
@@ -328,7 +330,7 @@ namespace Kalkatos.FunctionsGame
 
 			return JsonConvert.SerializeObject(new MatchResponse
 			{
-				MatchId = matchRequest.MatchId,
+				MatchId = request.MatchId,
 				Players = players
 			});
 		}
@@ -384,6 +386,19 @@ namespace Kalkatos.FunctionsGame
 		public MatchmakingNoPlayerAction ActionForNoPlayers { get; set; }
 	}
 
+	/*
+	{
+	"DelayBetweenAttempts":3,
+	"MaxAttempts":3,
+	"MinPlayerCount":2,
+	"MaxPlayerCount":2,
+	"HasBackfill":false,
+	"WaitingTimeForBackfill":5,
+	"DoBackfillWithBots":false,
+	"ActionForNoPlayers":1,
+	}
+	 
+	 */
 	public enum MatchmakingNoPlayerAction
 	{
 		ReturnFailed,

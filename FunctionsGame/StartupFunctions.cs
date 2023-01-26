@@ -18,16 +18,18 @@ namespace Kalkatos.FunctionsGame
 	{
 		[FunctionName(nameof(LogIn))]
 		public static async Task<IActionResult> LogIn (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] LoginRequest loginRequest,
+			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
 			ILogger log)
 		{
 			log.LogInformation("Executing login.");
 
-			if (Helper.VerifyNullParameter(loginRequest.Identifier, log))
+			LoginRequest request = JsonConvert.DeserializeObject<LoginRequest>(requestSerialized);
+
+			if (Helper.VerifyNullParameter(request.Identifier, log))
 				return new BadRequestObjectResult(new NetworkError { Tag = NetworkErrorTag.WrongParameters, Message = "Identifier is null. Must be an unique user identifier." });
 
 			// Access players data
-			BlockBlobClient identifierFile = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{loginRequest.Identifier}");
+			BlockBlobClient identifierFile = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{request.Identifier}");
 			PlayerRegistry playerRegistry;
 
 			// If the file exists
@@ -45,9 +47,9 @@ namespace Kalkatos.FunctionsGame
 				{
 					PlayerId = newPlayerId,
 					PlayerAlias = newPlayerAlias,
-					Nickname = loginRequest.Nickname,
-					Devices = new string[] { loginRequest.Identifier }, 
-					Region = loginRequest.Region,
+					Nickname = request.Nickname,
+					Devices = new string[] { request.Identifier }, 
+					Region = request.Region,
 					LastAccess = DateTime.UtcNow,
 					FirstAccess = DateTime.UtcNow
 				};
@@ -67,10 +69,10 @@ namespace Kalkatos.FunctionsGame
 				using Stream stream2 = await playerFile.OpenReadAsync();
 				string registrySerialized = Helper.ReadBytes(stream2);
 				playerRegistry = JsonConvert.DeserializeObject<PlayerRegistry>(registrySerialized);
-				if (!playerRegistry.Devices.Contains(loginRequest.Identifier))
-					playerRegistry.Devices = playerRegistry.Devices.Append(loginRequest.Identifier).ToArray();
+				if (!playerRegistry.Devices.Contains(request.Identifier))
+					playerRegistry.Devices = playerRegistry.Devices.Append(request.Identifier).ToArray();
 				playerRegistry.LastAccess = DateTime.UtcNow;
-				playerRegistry.Region = loginRequest.Region;
+				playerRegistry.Region = request.Region;
 				registrySerialized = JsonConvert.SerializeObject(playerRegistry);
 				using Stream stream3 = await playerFile.OpenWriteAsync(true);
 				stream3.Write(Encoding.ASCII.GetBytes(registrySerialized), 0, registrySerialized.Length);
@@ -90,9 +92,11 @@ namespace Kalkatos.FunctionsGame
 
 		[FunctionName(nameof(LoadGameData))]
 		public static async Task<IActionResult> LoadGameData (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] GameDataRequest gameDataRequest,
+			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
 			ILogger log)
 		{
+
+			GameDataRequest request = JsonConvert.DeserializeObject<GameDataRequest>(requestSerialized);
 
 			await Task.Delay(100);
 			return new OkObjectResult("Ok");
@@ -100,9 +104,11 @@ namespace Kalkatos.FunctionsGame
 
 		[FunctionName(nameof(SetNickname))]
 		public static async Task<IActionResult> SetNickname (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] SetNicknameRequest request,
+			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
 			ILogger log)
 		{
+			SetNicknameRequest request = JsonConvert.DeserializeObject<SetNicknameRequest>(requestSerialized);
+
 			// Get file
 			BlockBlobClient playersBlob = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{request.PlayerId}.json");
 
