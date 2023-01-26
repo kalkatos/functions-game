@@ -15,10 +15,12 @@ using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Kalkatos.FunctionsGame.Registry;
+using Kalkatos.Network.Model;
+using System.Collections;
 
 namespace Kalkatos.FunctionsGame
 {
-    public static class MatchmakingFunctions
+	public static class MatchmakingFunctions
 	{
 		[FunctionName(nameof(FindMatch))]
 		public static async Task<IActionResult> FindMatch (
@@ -44,11 +46,11 @@ namespace Kalkatos.FunctionsGame
 				log.LogInformation($"No matchmaking registered for player. Registering...");
 				await matchmakingTable.AddEntityAsync(new PlayerLookForMatchEntity
 				{
-					PartitionKey = playerRegion, 
-					RowKey = playerId, 
+					PartitionKey = playerRegion,
+					RowKey = playerId,
 					PlayerAlias = playerRegistry.PlayerAlias,
-					Status = (int)MatchmakingStatus.Searching 
-				}); 
+					Status = (int)MatchmakingStatus.Searching
+				});
 			}
 			else
 			{
@@ -122,7 +124,7 @@ namespace Kalkatos.FunctionsGame
 					log.LogInformation($"Players Matched!!!");
 					break;
 			}
-			
+
 			// Try X times while no player is found to match
 			if (info.ExecutionCount < info.Rules.MaxAttempts)
 				context.ContinueAsNew(info);
@@ -190,12 +192,12 @@ namespace Kalkatos.FunctionsGame
 						// Add bot entry to the matchmaking table
 						string botId = Guid.NewGuid().ToString();
 						string botAlias = Guid.NewGuid().ToString();
-						PlayerLookForMatchEntity botEntity = new PlayerLookForMatchEntity 
-						{ 
-							PartitionKey = info.Region, 
-							RowKey = botId, 
-							PlayerAlias = botAlias, 
-							Status = (int)MatchmakingStatus.Matched 
+						PlayerLookForMatchEntity botEntity = new PlayerLookForMatchEntity
+						{
+							PartitionKey = info.Region,
+							RowKey = botId,
+							PlayerAlias = botAlias,
+							Status = (int)MatchmakingStatus.Matched
 						};
 						tableClient.AddEntity(botEntity);
 						matchingPlayersList.Add(tableClient.GetEntity<PlayerLookForMatchEntity>(info.Region, botId).Value);
@@ -284,20 +286,51 @@ namespace Kalkatos.FunctionsGame
 
 		[FunctionName(nameof(GetMatch))]
 		public static async Task<string> GetMatch (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string playerId,
+			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] MatchRequest matchRequest,
 			[Table("matchmaking", Connection = "AzureWebJobsStorage")] TableClient tableClient,
 			ILogger log
 			)
 		{
-			// TODO Get the match id of the match to which that player is assigned in the matchmaking table
+			if (matchRequest == null || string.IsNullOrEmpty(matchRequest.PlayerId))
+			{
+				log.LogInformation($"Wrong Parameters. Request = {matchRequest}, Player ID = {matchRequest?.PlayerId ?? "<empty>"}");
+				return JsonConvert.SerializeObject(new MatchResponse { IsError = true, ErrorMessage = "Wrong Parameters." }); 
+			}
 
-			// TODO Get the match with the id in the matches blob
-			//BlockBlobClient blobClient = new BlockBlobClient("UseDevelopmentStorage=true", "matches");
+			if (string.IsNullOrEmpty(matchRequest.MatchId))
+			{
+				// Get the match id of the match to which that player is assigned in the matchmaking table
+				var query = tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == matchRequest.PlayerId);
+				if (query == null || query.Count() == 0)
+				{
+					log.LogInformation($"Found no match. Query = {query}");
+					return JsonConvert.SerializeObject(new MatchResponse { IsError = true, ErrorMessage = $"Didn't find any match for player." }); 
+				}
+				if (query.Count() > 1)
+					log.LogWarning($"More than one entry in matchmaking found! Player = {matchRequest.PlayerId} Query = {query}");
 
-			// TODO Return the match serialized 
+				var playerEntry = query.First();
+				string matchId = playerEntry.MatchId;
+				matchRequest.MatchId = matchId;
+				log.LogInformation($"Found a match: {matchId}");
+			}
 
-			await Task.Delay(500);
-			return null;
+			// Get the match with the id in the matches blob
+			BlockBlobClient matchesBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{matchRequest.MatchId}.json");
+			string[] players = null;
+			using (Stream stream = await matchesBlob.OpenReadAsync())
+			{
+				string serializedMatch = Helper.ReadBytes(stream);
+				MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(serializedMatch);
+				players = match.Players.Clone() as string[];
+				log.LogWarning($"Serialized match === {serializedMatch}");
+			}
+
+			return JsonConvert.SerializeObject(new MatchResponse
+			{
+				MatchId = matchRequest.MatchId,
+				Players = players
+			});
 		}
 
 		// TODO Function to update ServerRules
