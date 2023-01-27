@@ -2,7 +2,7 @@
 
 namespace Kalkatos.FunctionsGame.Registry
 {
-	internal class PlayerRegistry
+	public class PlayerRegistry
     {
         public string PlayerId;
         public string PlayerAlias;
