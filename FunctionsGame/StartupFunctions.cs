@@ -21,7 +21,7 @@ namespace Kalkatos.FunctionsGame
 			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
 			ILogger log)
 		{
-			log.LogInformation($"[{nameof(LogIn)}] Request = {requestSerialized}");
+			log.LogInformation($"   [{nameof(LogIn)}] Request = {requestSerialized}");
 
 			LoginRequest request = JsonConvert.DeserializeObject<LoginRequest>(requestSerialized);
 
@@ -54,13 +54,13 @@ namespace Kalkatos.FunctionsGame
 					FirstAccess = DateTime.UtcNow
 				};
 				string registrySerialized = JsonConvert.SerializeObject(playerRegistry);
-				log.LogInformation($"[{nameof(LogIn)}] Player registry CREATED === " + registrySerialized);
+				log.LogInformation($"   [{nameof(LogIn)}] Player registry CREATED === " + registrySerialized);
 				using Stream stream2 = await playerFile.OpenWriteAsync(true);
 				stream2.Write(Encoding.ASCII.GetBytes(registrySerialized), 0, registrySerialized.Length);
 			}
 			else
 			{
-				log.LogInformation($"[{nameof(LogIn)}] Returning user! ===> ");
+				log.LogInformation($"   [{nameof(LogIn)}] Returning user! ===> ");
 				// Existing user
 				using Stream stream = await identifierFile.OpenReadAsync();
 				string playerId = Helper.ReadBytes(stream);
@@ -76,7 +76,7 @@ namespace Kalkatos.FunctionsGame
 				registrySerialized = JsonConvert.SerializeObject(playerRegistry);
 				using Stream stream3 = await playerFile.OpenWriteAsync(true);
 				stream3.Write(Encoding.ASCII.GetBytes(registrySerialized), 0, registrySerialized.Length);
-				log.LogInformation($"[{nameof(LogIn)}] Player registry saved === " + registrySerialized);
+				log.LogInformation($"   [{nameof(LogIn)}] Player registry saved === " + registrySerialized);
 			}
 
 			LoginResponse response = new LoginResponse 
@@ -95,7 +95,7 @@ namespace Kalkatos.FunctionsGame
 			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
 			ILogger log)
 		{
-			log.LogInformation($"[{nameof(LoadGameData)}] Request = {requestSerialized}");
+			log.LogInformation($"   [{nameof(LoadGameData)}] Request = {requestSerialized}");
 
 			GameDataRequest request = JsonConvert.DeserializeObject<GameDataRequest>(requestSerialized);
 
@@ -108,7 +108,7 @@ namespace Kalkatos.FunctionsGame
 			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
 			ILogger log)
 		{
-			log.LogInformation($"[{nameof(SetNickname)}] Request = {requestSerialized}");
+			log.LogInformation($"   [{nameof(SetNickname)}] Request = {requestSerialized}");
 
 			SetNicknameRequest request = JsonConvert.DeserializeObject<SetNicknameRequest>(requestSerialized);
 
