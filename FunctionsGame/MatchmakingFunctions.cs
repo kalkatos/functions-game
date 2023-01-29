@@ -21,6 +21,11 @@ namespace Kalkatos.FunctionsGame
 {
 	public static class MatchmakingFunctions
 	{
+		private static Random random = new Random();
+		private const string consonantsUpper = "BCDFGHJKLMNPQRSTVWXZ";
+		private const string consonantsLower = "bcdfghjklmnpqrstvwxz";
+		private const string vowels = "aeiouy";
+
 		[FunctionName(nameof(FindMatch))]
 		public static async Task<IActionResult> FindMatch (
 			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string playerId,
@@ -47,7 +52,7 @@ namespace Kalkatos.FunctionsGame
 				{
 					PartitionKey = playerRegion,
 					RowKey = playerId,
-					PlayerAlias = playerRegistry.PlayerAlias,
+					PlayerInfoSerialized = JsonConvert.SerializeObject(playerRegistry.Info),
 					Status = (int)MatchmakingStatus.Searching
 				});
 			}
@@ -198,11 +203,16 @@ namespace Kalkatos.FunctionsGame
 						// Add bot entry to the matchmaking table
 						string botId = Guid.NewGuid().ToString();
 						string botAlias = Guid.NewGuid().ToString();
+						PlayerInfo botInfo = new PlayerInfo
+						{
+							Alias = botAlias,
+							Nickname = CreateBotNickname(),
+						};
 						PlayerLookForMatchEntity botEntity = new PlayerLookForMatchEntity
 						{
 							PartitionKey = info.Region,
 							RowKey = botId,
-							PlayerAlias = botAlias,
+							PlayerInfoSerialized = JsonConvert.SerializeObject(botInfo),
 							Status = (int)MatchmakingStatus.Matched
 						};
 						tableClient.AddEntity(botEntity);
@@ -231,7 +241,7 @@ namespace Kalkatos.FunctionsGame
 			{
 				string newMatchId = Guid.NewGuid().ToString();
 
-				string[] playerAliases = new string[entities.Count];
+				PlayerInfo[] playerInfos = new PlayerInfo[entities.Count];
 				string[] playerIds = new string[entities.Count];
 				for (int i = 0; i < entities.Count; i++)
 				{
@@ -239,8 +249,8 @@ namespace Kalkatos.FunctionsGame
 					entity.MatchId = newMatchId;
 					entity.Status = (int)MatchmakingStatus.Matched;
 					tableClient.UpdateEntity(entity, entity.ETag, TableUpdateMode.Replace);
-					playerAliases[i] = entity.PlayerAlias;
 					playerIds[i] = entity.RowKey;
+					playerInfos[i] = JsonConvert.DeserializeObject<PlayerInfo>(entity.PlayerInfoSerialized);
 					region = entity.PartitionKey;
 				}
 
@@ -248,7 +258,7 @@ namespace Kalkatos.FunctionsGame
 				MatchRegistry matchInfo = new MatchRegistry
 				{
 					MatchId = newMatchId,
-					PlayerAliases = playerAliases,
+					PlayerInfos = playerInfos,
 					PlayerIds = playerIds,
 					Region = region,
 					HasBots = hasBots,
@@ -333,12 +343,18 @@ namespace Kalkatos.FunctionsGame
 			BlockBlobClient matchesBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{request.MatchId}.json");
 			if (await matchesBlob.ExistsAsync())
 			{
-				string[] players = null;
+				PlayerInfo[] players = null;
 				using (Stream stream = await matchesBlob.OpenReadAsync())
 				{
 					string serializedMatch = Helper.ReadBytes(stream);
 					MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(serializedMatch);
-					players = match.PlayerAliases.Clone() as string[];
+					players = new PlayerInfo[match.PlayerIds.Length];
+					int playerIndex = 0;
+					foreach (var player in match.PlayerInfos)
+					{
+						players[playerIndex] = player.Clone();
+						playerIndex++;
+					}
 					log.LogInformation($"   [{nameof(GetMatch)}] Serialized match === {serializedMatch}");
 				}
 
@@ -408,7 +424,23 @@ namespace Kalkatos.FunctionsGame
 		}
 
 		// TODO Function to update ServerRules
+
+		public static string CreateBotNickname ()
+		{
+			string result = "";
+			for (int i = 0; i < 6; i++)
+			{
+				if (i == 0)
+					result += consonantsUpper[random.Next(0, consonantsUpper.Length)];
+				else if (i % 2 == 0)
+					result += consonantsLower[random.Next(0, consonantsLower.Length)];
+				else
+					result += vowels[random.Next(0, vowels.Length)];
+			}
+			return "Guest-" + result;
+		}
 	}
+
 
 	public enum TableMatchmakingResult
 	{
@@ -439,7 +471,7 @@ namespace Kalkatos.FunctionsGame
 	{
 		public string PartitionKey { get; set; } // Player region & other matchmaking data
 		public string RowKey { get; set; } // Player ID
-		public string PlayerAlias { get; set; }
+		public string PlayerInfoSerialized { get; set; }
 		public string MatchId { get; set; }
 		public int Status { get; set; }
 		public DateTimeOffset? Timestamp { get; set; }

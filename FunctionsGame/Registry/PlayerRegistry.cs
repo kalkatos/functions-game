@@ -1,12 +1,12 @@
-﻿using System;
+﻿using Kalkatos.Network.Model;
+using System;
 
 namespace Kalkatos.FunctionsGame.Registry
 {
 	public class PlayerRegistry
     {
         public string PlayerId;
-        public string PlayerAlias;
-        public string Nickname;
+        public PlayerInfo Info;
         public string Region;
         public bool IsAuthenticated;
         public string[] Devices;

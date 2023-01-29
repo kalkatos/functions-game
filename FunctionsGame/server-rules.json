@@ -6,5 +6,5 @@
 	"HasBackfill":false,
 	"WaitingTimeForBackfill":5,
 	"DoBackfillWithBots":false,
-	"ActionForNoPlayers":1,
+	"ActionForNoPlayers":1
 }

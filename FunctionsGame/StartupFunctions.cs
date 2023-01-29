@@ -38,6 +38,7 @@ namespace Kalkatos.FunctionsGame
 				// New user. Save identifier pointing to player id
 				string newPlayerId = Guid.NewGuid().ToString();
 				string newPlayerAlias = Guid.NewGuid().ToString();
+				PlayerInfo newPlayerInfo = new PlayerInfo { Alias = newPlayerAlias, Nickname = request.Nickname };
 				using Stream stream = await identifierFile.OpenWriteAsync(true);
 				stream.Write(Encoding.ASCII.GetBytes(newPlayerId), 0, newPlayerId.Length);
 
@@ -46,8 +47,7 @@ namespace Kalkatos.FunctionsGame
 				playerRegistry = new PlayerRegistry 
 				{
 					PlayerId = newPlayerId,
-					PlayerAlias = newPlayerAlias,
-					Nickname = request.Nickname,
+					Info = newPlayerInfo,
 					Devices = new string[] { request.Identifier }, 
 					Region = request.Region,
 					LastAccess = DateTime.UtcNow,
@@ -83,8 +83,8 @@ namespace Kalkatos.FunctionsGame
 			{
 				IsAuthenticated = playerRegistry.IsAuthenticated, 
 				PlayerId = playerRegistry.PlayerId,
-				PlayerAlias = playerRegistry.PlayerAlias,
-				SavedNickname = playerRegistry.Nickname,
+				PlayerAlias = playerRegistry.Info.Alias,
+				SavedNickname = playerRegistry.Info.Nickname,
 			};
 
 			return new OkObjectResult(response);
@@ -123,7 +123,7 @@ namespace Kalkatos.FunctionsGame
 			using Stream readStream = await playersBlob.OpenReadAsync();
 			string registrySerialized = Helper.ReadBytes(readStream);
 			PlayerRegistry registry = JsonConvert.DeserializeObject<PlayerRegistry>(registrySerialized);
-			registry.Nickname = request.Nickname;
+			registry.Info.Nickname = request.Nickname;
 			using Stream writeStream = await playersBlob.OpenWriteAsync(true);
 			writeStream.Write(Encoding.ASCII.GetBytes(registrySerialized));
 

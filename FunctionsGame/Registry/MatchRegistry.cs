@@ -6,8 +6,8 @@ namespace Kalkatos.FunctionsGame.Registry
 	public class MatchRegistry
     {
         public string MatchId;
-        public string[] PlayerAliases;
         public string[] PlayerIds;
+        public PlayerInfo[] PlayerInfos;
         public string Region;
         public bool IsEnded;
         public bool HasBots;
