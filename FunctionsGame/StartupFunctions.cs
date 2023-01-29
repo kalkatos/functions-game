@@ -11,6 +11,7 @@ using Azure.Storage.Blobs.Specialized;
 using Newtonsoft.Json;
 using Kalkatos.Network.Model;
 using Kalkatos.FunctionsGame.Registry;
+using System.Collections.Generic;
 
 namespace Kalkatos.FunctionsGame
 {
@@ -25,8 +26,11 @@ namespace Kalkatos.FunctionsGame
 
 			LoginRequest request = JsonConvert.DeserializeObject<LoginRequest>(requestSerialized);
 
-			if (Helper.VerifyNullParameter(request.Identifier, log))
-				return new BadRequestObjectResult(new NetworkError { Tag = NetworkErrorTag.WrongParameters, Message = "Identifier is null. Must be an unique user identifier." });
+			if (string.IsNullOrEmpty(request.Identifier))
+			{
+				log.LogInformation($"   [{nameof(LogIn)}] Identifier is null.");
+				return new BadRequestObjectResult(new NetworkError { Tag = NetworkErrorTag.WrongParameters, Message = "Identifier is null. Must be an unique user identifier." }); 
+			}
 
 			// Access players data
 			BlockBlobClient identifierFile = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{request.Identifier}");
@@ -54,7 +58,7 @@ namespace Kalkatos.FunctionsGame
 					FirstAccess = DateTime.UtcNow
 				};
 				string registrySerialized = JsonConvert.SerializeObject(playerRegistry);
-				log.LogInformation($"   [{nameof(LogIn)}] Player registry CREATED === " + registrySerialized);
+				log.LogInformation($"   [{nameof(LogIn)}] Player registry CREATED === {registrySerialized}");
 				using Stream stream2 = await playerFile.OpenWriteAsync(true);
 				stream2.Write(Encoding.ASCII.GetBytes(registrySerialized), 0, registrySerialized.Length);
 			}
@@ -103,29 +107,46 @@ namespace Kalkatos.FunctionsGame
 			return new OkObjectResult("Ok");
 		}
 
-		[FunctionName(nameof(SetNickname))]
-		public static async Task<IActionResult> SetNickname (
+		[FunctionName(nameof(SetPlayerData))]
+		public static async Task<IActionResult> SetPlayerData (
 			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
 			ILogger log)
 		{
-			log.LogInformation($"   [{nameof(SetNickname)}] Request = {requestSerialized}");
+			log.LogInformation($"   [{nameof(SetPlayerData)}] Request = {requestSerialized}");
 
-			SetNicknameRequest request = JsonConvert.DeserializeObject<SetNicknameRequest>(requestSerialized);
+			SetPlayerDataRequest request = JsonConvert.DeserializeObject<SetPlayerDataRequest>(requestSerialized);
+
+			if (request.Data == null || request.Data.Count() == 0)
+				return new BadRequestObjectResult(new NetworkError { Tag = NetworkErrorTag.WrongParameters, Message = "Request Data is null or empty." });
 
 			// Get file
 			BlockBlobClient playersBlob = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{request.PlayerId}.json");
-
-			// Check if exists
 			if (!await playersBlob.ExistsAsync())
 				return new NotFoundObjectResult("Player not found.");
 
-			// Read and Write new nickname
+			// Read file
 			using Stream readStream = await playersBlob.OpenReadAsync();
 			string registrySerialized = Helper.ReadBytes(readStream);
 			PlayerRegistry registry = JsonConvert.DeserializeObject<PlayerRegistry>(registrySerialized);
-			registry.Info.Nickname = request.Nickname;
+
+			// Change nickname if it is one of the changes
+			if (request.Data.ContainsKey("Nickname"))
+			{
+				registry.Info.Nickname = request.Data["Nickname"];
+				request.Data.Remove("Nickname");
+			}
+
+			foreach (var item in request.Data)
+			{
+				if (registry.Info.CustomData.ContainsKey(item.Key))
+					registry.Info.CustomData[item.Key] = item.Value;
+				else
+					registry.Info.CustomData.Add(item.Key, item.Value);
+			}
+
+			// Write back to file
 			using Stream writeStream = await playersBlob.OpenWriteAsync(true);
-			writeStream.Write(Encoding.ASCII.GetBytes(registrySerialized));
+			writeStream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(registry)));
 
 			return new OkObjectResult("Ok");
 		}

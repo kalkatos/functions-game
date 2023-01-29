@@ -24,14 +24,5 @@ namespace Kalkatos.FunctionsGame
 			}
 			return Encoding.UTF8.GetString(bytes);
 		}
-
-		internal static bool VerifyNullParameter (string parameter, ILogger log)
-		{
-			bool isNullId = string.IsNullOrEmpty(parameter);
-			if (isNullId)
-				parameter = "<empty>";
-			log.LogInformation("Request with identifier: " + (string.IsNullOrEmpty(parameter) ? "<empty>" : parameter));
-			return isNullId;
-		}
 	}
 }
