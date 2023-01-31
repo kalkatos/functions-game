@@ -47,7 +47,7 @@ namespace Kalkatos.FunctionsGame
 			log.LogInformation($"   [{nameof(TurnOrchestrator)}] Working on match === {match.MatchId}");
 
 			// DEBUG
-			DateTime nextCheck = context.CurrentUtcDateTime.AddSeconds(60);
+			DateTime nextCheck = context.CurrentUtcDateTime.AddSeconds(30);
 			await context.CreateTimer(nextCheck, CancellationToken.None);
 			await context.CallActivityAsync(nameof(DeleteMatch), match);
 
@@ -89,7 +89,7 @@ namespace Kalkatos.FunctionsGame
 				case "Action3":
 				case "LeaveMatch":
 					isActionDefined = true;
-					await actionTable.AddEntityAsync<PlayerActionEntity>(new PlayerActionEntity
+					await actionTable.AddEntityAsync(new PlayerActionEntity
 					{
 						PartitionKey = request.MatchId,
 						RowKey = request.PlayerId,

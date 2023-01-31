@@ -282,28 +282,6 @@ namespace Kalkatos.FunctionsGame
 			return JsonConvert.DeserializeObject<ServerRules>(readInfo);
 		}
 
-		/*
-		[FunctionName(nameof(ReadData))]
-		public static string ReadData (
-			[ActivityTrigger] string input,
-			[Blob("test/custom-entry.json", FileAccess.Read, Connection = "AzureWebJobsStorage")] string readInfo,
-			ILogger log)
-		{
-			log.LogInformation($"   [{nameof(StartMatch)}] =========>   Read: {readInfo}");
-			return readInfo;
-		}
-
-		[FunctionName(nameof(WriteData))]
-		public static void WriteData (
-			[ActivityTrigger] string input,
-			[Blob("test/custom-entry.json", FileAccess.Write, Connection = "AzureWebJobsStorage")] out string output,
-			ILogger log)
-		{
-			output = input;
-			log.LogInformation($"   [{nameof(StartMatch)}] =========>   Writen: {input}");
-		}
-		*/
-
 		#endregion =======================================================================================
 
 		[FunctionName(nameof(GetMatch))]
