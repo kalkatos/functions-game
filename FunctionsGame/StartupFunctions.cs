@@ -11,7 +11,6 @@ using Azure.Storage.Blobs.Specialized;
 using Newtonsoft.Json;
 using Kalkatos.Network.Model;
 using Kalkatos.FunctionsGame.Registry;
-using System.Collections.Generic;
 
 namespace Kalkatos.FunctionsGame
 {

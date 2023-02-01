@@ -3,6 +3,8 @@ using Azure.Data.Tables;
 using Azure.Storage.Blobs.Specialized;
 using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Infrastructure;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Azure.WebJobs.Extensions.Http;
@@ -57,6 +59,8 @@ namespace Kalkatos.FunctionsGame
 			// TODO Run turn in loops
 		}
 
+
+		// TODO Change to return IActionResult
 		[FunctionName(nameof(SendAction))]
 		public static async Task<string> SendAction (
 			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
@@ -65,7 +69,6 @@ namespace Kalkatos.FunctionsGame
 		{
 			log.LogWarning($"   [{nameof(SendAction)}] Started.");
 
-			// TODO Register action
 			ActionRequest request = JsonConvert.DeserializeObject<ActionRequest>(requestSerialized);
 
 			// Check request
@@ -86,7 +89,7 @@ namespace Kalkatos.FunctionsGame
 			{
 				case "Action1":
 				case "Action2":
-				case "Action3":
+				case "Handshaking":
 				case "LeaveMatch":
 					isActionDefined = true;
 					await actionTable.AddEntityAsync(new PlayerActionEntity
@@ -94,10 +97,13 @@ namespace Kalkatos.FunctionsGame
 						PartitionKey = request.MatchId,
 						RowKey = request.PlayerId,
 						ActionName = request.ActionName,
-						SerializedParameter = request.SerializedParameter,
+						SerializedParameter = request.Parameter?.ToString(),
 					});
 					break;
 			}
+
+			// TODO Check parameter
+			request.Parameter = JsonConvert.DeserializeObject(request.Parameter.ToString());
 
 			if (!isActionDefined)
 			{
@@ -106,6 +112,45 @@ namespace Kalkatos.FunctionsGame
 			}
 			log.LogInformation($"   [{nameof(SendAction)}] Action Registered. Request = {requestSerialized}");
 			return JsonConvert.SerializeObject(new ActionResponse { Message = $"Action {request.ActionName} registered." });
+		}
+
+		[FunctionName(nameof(GetMatchState))]
+		public static async Task<IActionResult> GetMatchState (
+			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
+			ILogger log
+			)
+		{
+			log.LogWarning($"   [{nameof(GetMatchState)}] Started.");
+
+			StateRequest request = JsonConvert.DeserializeObject<StateRequest>(requestSerialized);
+
+			// Check request
+			if (request == null || string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.MatchId))
+			{
+				log.LogError($"   [{nameof(GetMatchState)}] Wrong Parameters. Request = {requestSerialized}");
+				return new BadRequestObjectResult("Wrong Parameters.");
+			}
+
+			// Open state blob
+			BlockBlobClient stateBlob = new BlockBlobClient("UseDevelopmentStorage=true", "states", $"{request.MatchId}.json");
+			StateInfo[] stateHistory = null;
+			if (await stateBlob.ExistsAsync())
+			{
+				using (Stream stream = await stateBlob.OpenReadAsync())
+				{
+					StateInfo[] savedHistory = JsonConvert.DeserializeObject<StateInfo[]>(Helper.ReadBytes(stream));
+					stateHistory = new StateInfo[savedHistory.Length + 1];
+					for (int i = 0; i < savedHistory.Length; i++)
+						stateHistory[i] = savedHistory[i];
+				}
+			}
+			else
+				stateHistory = new StateInfo[1];
+
+			// TODO Find out and return new state
+
+
+			return new OkObjectResult("Finished");
 		}
 
 		// TODO Move to clean up functions

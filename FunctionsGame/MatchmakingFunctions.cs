@@ -284,6 +284,7 @@ namespace Kalkatos.FunctionsGame
 
 		#endregion =======================================================================================
 
+		// TODO Change to return IActionResult
 		[FunctionName(nameof(GetMatch))]
 		public static async Task<string> GetMatch (
 			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
@@ -350,6 +351,7 @@ namespace Kalkatos.FunctionsGame
 			});
 		}
 
+		// TODO Change to return IActionResult
 		[FunctionName(nameof(LeaveMatch))]
 		public static async Task<string> LeaveMatch (
 			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
