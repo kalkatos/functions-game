@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Azure;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs.Specialized;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Azure.WebJobs.Extensions.Http;
@@ -16,6 +15,7 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
+using Response = Kalkatos.Network.Model.Response;
 
 namespace Kalkatos.FunctionsGame
 {
@@ -27,7 +27,7 @@ namespace Kalkatos.FunctionsGame
 		private const string vowels = "aeiouy";
 
 		[FunctionName(nameof(FindMatch))]
-		public static async Task<IActionResult> FindMatch (
+		public static async Task<string> FindMatch (
 			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string playerId,
 			[DurableClient] IDurableOrchestrationClient durableFunctionsClient,
 			ILogger log)
@@ -92,10 +92,135 @@ namespace Kalkatos.FunctionsGame
 			else
 				log.LogInformation($"   [{nameof(FindMatch)}] Orchestrator already running for region ({playerRegion}). Json = {JsonConvert.SerializeObject(functionStatus)}");
 
-			return new OkObjectResult("Ok");
+			return $"{{\"{nameof(Response.IsError)}\":false,\"{nameof(Response.Message)}\":\"Ok.\"}}";
 		}
 
+
+
+
+		[FunctionName(nameof(GetMatch))]
+		public static async Task<string> GetMatch (
+			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
+			[Table("Matchmaking", Connection = "AzureWebJobsStorage")] TableClient tableClient,
+			ILogger log
+			)
+		{
+			MatchRequest request = JsonConvert.DeserializeObject<MatchRequest>(requestSerialized);
+
+			if (request == null || string.IsNullOrEmpty(request.PlayerId))
+			{
+				log.LogInformation($"   [{nameof(GetMatch)}] Wrong Parameters. Request = {request}, Player ID = {request?.PlayerId ?? "<empty>"}");
+				return JsonConvert.SerializeObject(new MatchResponse { IsError = true, Message = "Wrong Parameters." });
+			}
+
+			if (string.IsNullOrEmpty(request.MatchId))
+			{
+				// Get the match id of the match to which that player is assigned in the matchmaking table
+				var query = tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == request.PlayerId);
+				if (query == null || query.Count() == 0)
+				{
+					log.LogInformation($"   [{nameof(GetMatch)}] Found no match. Query = {query}");
+					return JsonConvert.SerializeObject(new MatchResponse { IsError = true, Message = $"Didn't find any match for player." });
+				}
+				if (query.Count() > 1)
+					log.LogWarning($"[{nameof(GetMatch)}] More than one entry in matchmaking found! Player = {request.PlayerId} Query = {query}");
+
+				var playerEntry = query.First();
+				string matchId = playerEntry.MatchId;
+				request.MatchId = matchId;
+				log.LogInformation($"   [{nameof(GetMatch)}] Found a match: {matchId}");
+			}
+
+			// Get the match with the id in the matches blob
+			BlockBlobClient matchesBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{request.MatchId}.json");
+			if (await matchesBlob.ExistsAsync())
+			{
+				PlayerInfo[] players = null;
+				using (Stream stream = await matchesBlob.OpenReadAsync())
+				{
+					string serializedMatch = Helper.ReadBytes(stream);
+					MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(serializedMatch);
+					players = new PlayerInfo[match.PlayerIds.Length];
+					int playerIndex = 0;
+					foreach (var player in match.PlayerInfos)
+					{
+						players[playerIndex] = player.Clone();
+						playerIndex++;
+					}
+					log.LogInformation($"   [{nameof(GetMatch)}] Serialized match === {serializedMatch}");
+				}
+
+				return JsonConvert.SerializeObject(new MatchResponse
+				{
+					MatchId = request.MatchId,
+					Players = players
+				});
+			}
+			log.LogInformation($"   [{nameof(GetMatch)}] Found no match file with id {request.MatchId}");
+			return JsonConvert.SerializeObject(new MatchResponse
+			{
+				IsError = true,
+				Message = $"Match with id {request.MatchId} wasn't found."
+			});
+		}
+
+
+
+
+		[FunctionName(nameof(LeaveMatch))]
+		public static async Task<string> LeaveMatch (
+			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
+			[Table("Matchmaking", Connection = "AzureWebJobsStorage")] TableClient tableClient,
+			ILogger log
+			)
+		{
+			log.LogInformation($"   [{nameof(LeaveMatch)}] Started.");
+
+			MatchRequest request = JsonConvert.DeserializeObject<MatchRequest>(requestSerialized);
+
+			if (request == null || string.IsNullOrEmpty(request.PlayerId))
+			{
+				log.LogError($"[{nameof(LeaveMatch)}] Wrong Parameters. Player ID = {request?.PlayerId ?? "<empty>"}, Request = {requestSerialized}");
+				return JsonConvert.SerializeObject(new MatchResponse { IsError = true, Message = "Wrong Parameters." });
+			}
+
+			// Get the match id of the match to which that player is assigned in the matchmaking table
+			var query = tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == request.PlayerId);
+			if (query == null || query.Count() == 0)
+			{
+				log.LogInformation($"   [{nameof(LeaveMatch)}] Found no match. Query = {query}");
+				return JsonConvert.SerializeObject(new MatchResponse { Message = $"Didn't find any match for player." });
+			}
+			if (query.Count() > 1)
+				log.LogWarning($"[{nameof(LeaveMatch)}] More than one entry in matchmaking found! Player = {request.PlayerId} Query = {query}");
+
+			foreach (var item in query)
+			{
+				if (item.Status == (int)MatchmakingStatus.Searching)
+				{
+					item.Status = (int)MatchmakingStatus.Canceled;
+					await tableClient.UpdateEntityAsync(item, item.ETag);
+					log.LogInformation($"   [{nameof(LeaveMatch)}] Canceled successfully. Player = {request.PlayerId} Query = {query}");
+				}
+				else if (item.Status == (int)MatchmakingStatus.Matched)
+				{
+					string actionResponseSerialized = await TurnFunctions.SendAction(JsonConvert.SerializeObject(new ActionRequest
+					{
+						ActionName = "LeaveMatch",
+						PlayerId = request.PlayerId,
+						MatchId = item.MatchId
+					}), log);
+					log.LogInformation($"   [{nameof(LeaveMatch)}] Sent action to leave match. ActionResponse = {actionResponseSerialized}");
+					return JsonConvert.SerializeObject(new MatchResponse { MatchId = item.MatchId, Message = "Sent action to leave match." });
+				}
+			}
+
+			return JsonConvert.SerializeObject(new MatchResponse { Message = "Left match successfully." });
+		}
+
+
 		#region Orchestrator ======================================================================================
+
 
 		[FunctionName(nameof(MatchmakingOrchestrator))]
 		public static async Task MatchmakingOrchestrator (
@@ -107,7 +232,7 @@ namespace Kalkatos.FunctionsGame
 			MatchmakingOrchestratorInfo info = context.GetInput<MatchmakingOrchestratorInfo>();
 			if (info.Rules == null)
 			{
-				info.Rules = await context.CallActivityAsync<ServerRules>(nameof(GetServerRules), null);
+				info.Rules = await context.CallActivityAsync<MatchmakingRules>(nameof(GetMatchmakingRules), null);
 				await TryPairing();
 			}
 
@@ -143,11 +268,15 @@ namespace Kalkatos.FunctionsGame
 			}
 		}
 
+
+
+
+
 		[FunctionName(nameof(PairPlayersInTable))]
 		public static TableMatchmakingResult PairPlayersInTable (
 			[ActivityTrigger] MatchmakingOrchestratorInfo info,
 			[Table("Matchmaking", Connection = "AzureWebJobsStorage")] TableClient tableClient,
-			[Blob("rules/server-rules.json", FileAccess.Read, Connection = "AzureWebJobsStorage")] string serializedRules,
+			[Blob("rules/matchmaking-rules.json", FileAccess.Read, Connection = "AzureWebJobsStorage")] string serializedRules,
 			ILogger log)
 		{
 			log.LogInformation($"   [{nameof(PairPlayersInTable)}] Looking for players to match.");
@@ -162,7 +291,7 @@ namespace Kalkatos.FunctionsGame
 			}
 
 			// Get server rules
-			ServerRules rules = JsonConvert.DeserializeObject<ServerRules>(serializedRules);
+			MatchmakingRules rules = JsonConvert.DeserializeObject<MatchmakingRules>(serializedRules);
 			List<PlayerLookForMatchEntity> matchingPlayersList = new List<PlayerLookForMatchEntity>();
 			bool hadAMatch = false;
 			// Run through query matching available players
@@ -272,138 +401,26 @@ namespace Kalkatos.FunctionsGame
 			}
 		}
 
-		[FunctionName(nameof(GetServerRules))]
-		public static ServerRules GetServerRules (
+
+
+
+
+		[FunctionName(nameof(GetMatchmakingRules))]
+		public static MatchmakingRules GetMatchmakingRules (
 			[ActivityTrigger] string input,
-			[Blob("rules/server-rules.json", FileAccess.Read, Connection = "AzureWebJobsStorage")] string readInfo,
+			[Blob("rules/matchmaking-rules.json", FileAccess.Read, Connection = "AzureWebJobsStorage")] string readInfo,
 			ILogger log)
 		{
-			log.LogInformation($"   [{nameof(GetServerRules)}] {nameof(GetServerRules)} === {readInfo}");
-			return JsonConvert.DeserializeObject<ServerRules>(readInfo);
+			log.LogInformation($"   [{nameof(GetMatchmakingRules)}] {nameof(GetMatchmakingRules)} === {readInfo}");
+			return JsonConvert.DeserializeObject<MatchmakingRules>(readInfo);
 		}
+
 
 		#endregion =======================================================================================
 
-		// TODO Change to return IActionResult
-		[FunctionName(nameof(GetMatch))]
-		public static async Task<string> GetMatch (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
-			[Table("Matchmaking", Connection = "AzureWebJobsStorage")] TableClient tableClient,
-			ILogger log
-			)
-		{
-			MatchRequest request = JsonConvert.DeserializeObject<MatchRequest>(requestSerialized);
 
-			if (request == null || string.IsNullOrEmpty(request.PlayerId))
-			{
-				log.LogInformation($"   [{nameof(GetMatch)}] Wrong Parameters. Request = {request}, Player ID = {request?.PlayerId ?? "<empty>"}");
-				return JsonConvert.SerializeObject(new MatchResponse { IsError = true, Message = "Wrong Parameters." });
-			}
+		// TODO Function to update MatchmakingRules
 
-			if (string.IsNullOrEmpty(request.MatchId))
-			{
-				// Get the match id of the match to which that player is assigned in the matchmaking table
-				var query = tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == request.PlayerId);
-				if (query == null || query.Count() == 0)
-				{
-					log.LogInformation($"   [{nameof(GetMatch)}] Found no match. Query = {query}");
-					return JsonConvert.SerializeObject(new MatchResponse { IsError = true, Message = $"Didn't find any match for player." });
-				}
-				if (query.Count() > 1)
-					log.LogWarning($"[{nameof(GetMatch)}] More than one entry in matchmaking found! Player = {request.PlayerId} Query = {query}");
-
-				var playerEntry = query.First();
-				string matchId = playerEntry.MatchId;
-				request.MatchId = matchId;
-				log.LogInformation($"   [{nameof(GetMatch)}] Found a match: {matchId}");
-			}
-
-			// Get the match with the id in the matches blob
-			BlockBlobClient matchesBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{request.MatchId}.json");
-			if (await matchesBlob.ExistsAsync())
-			{
-				PlayerInfo[] players = null;
-				using (Stream stream = await matchesBlob.OpenReadAsync())
-				{
-					string serializedMatch = Helper.ReadBytes(stream);
-					MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(serializedMatch);
-					players = new PlayerInfo[match.PlayerIds.Length];
-					int playerIndex = 0;
-					foreach (var player in match.PlayerInfos)
-					{
-						players[playerIndex] = player.Clone();
-						playerIndex++;
-					}
-					log.LogInformation($"   [{nameof(GetMatch)}] Serialized match === {serializedMatch}");
-				}
-
-				return JsonConvert.SerializeObject(new MatchResponse
-				{
-					MatchId = request.MatchId,
-					Players = players
-				});
-			}
-			log.LogInformation($"   [{nameof(GetMatch)}] Found no match file with id {request.MatchId}");
-			return JsonConvert.SerializeObject(new MatchResponse
-			{
-				IsError = true,
-				Message = $"Match with id {request.MatchId} wasn't found."
-			});
-		}
-
-		// TODO Change to return IActionResult
-		[FunctionName(nameof(LeaveMatch))]
-		public static async Task<string> LeaveMatch (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
-			[Table("Matchmaking", Connection = "AzureWebJobsStorage")] TableClient tableClient,
-			ILogger log
-			)
-		{
-			log.LogInformation($"   [{nameof(LeaveMatch)}] Started.");
-
-			MatchRequest request = JsonConvert.DeserializeObject<MatchRequest>(requestSerialized);
-
-			if (request == null || string.IsNullOrEmpty(request.PlayerId))
-			{
-				log.LogError($"[{nameof(LeaveMatch)}] Wrong Parameters. Player ID = {request?.PlayerId ?? "<empty>"}, Request = {requestSerialized}");
-				return JsonConvert.SerializeObject(new MatchResponse { IsError = true, Message = "Wrong Parameters." });
-			}
-
-			// Get the match id of the match to which that player is assigned in the matchmaking table
-			var query = tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == request.PlayerId);
-			if (query == null || query.Count() == 0)
-			{
-				log.LogInformation($"   [{nameof(LeaveMatch)}] Found no match. Query = {query}");
-				return JsonConvert.SerializeObject(new MatchResponse { Message = $"Didn't find any match for player." });
-			}
-			if (query.Count() > 1)
-				log.LogWarning($"[{nameof(LeaveMatch)}] More than one entry in matchmaking found! Player = {request.PlayerId} Query = {query}");
-
-			foreach (var item in query)
-			{
-				if (item.Status == (int)MatchmakingStatus.Searching)
-				{
-					item.Status = (int)MatchmakingStatus.Canceled;
-					await tableClient.UpdateEntityAsync(item, item.ETag);
-					log.LogInformation($"   [{nameof(LeaveMatch)}] Canceled successfully. Player = {request.PlayerId} Query = {query}");
-				}
-				else if (item.Status == (int)MatchmakingStatus.Matched)
-				{
-					string actionResponseSerialized = await TurnFunctions.SendAction(JsonConvert.SerializeObject(new ActionRequest
-					{
-						ActionName = "LeaveMatch",
-						PlayerId = request.PlayerId,
-						MatchId = item.MatchId
-					}), log);
-					log.LogInformation($"   [{nameof(LeaveMatch)}] Sent action to leave match. ActionResponse = {actionResponseSerialized}");
-					return JsonConvert.SerializeObject(new MatchResponse { MatchId = item.MatchId, Message = "Sent action to leave match." });
-				}
-			}
-
-			return JsonConvert.SerializeObject(new MatchResponse { Message = "Left match successfully." });
-		}
-
-		// TODO Function to update ServerRules
 
 		public static string CreateBotNickname ()
 		{
@@ -444,7 +461,7 @@ namespace Kalkatos.FunctionsGame
 	{
 		public string Region;
 		public int ExecutionCount;
-		public ServerRules Rules;
+		public MatchmakingRules Rules;
 	}
 
 	public class PlayerLookForMatchEntity : ITableEntity
@@ -456,37 +473,5 @@ namespace Kalkatos.FunctionsGame
 		public int Status { get; set; }
 		public DateTimeOffset? Timestamp { get; set; }
 		public ETag ETag { get; set; }
-	}
-
-	public class ServerRules
-	{
-		// Matchmaking
-		public float DelayBetweenAttempts { get; set; }
-		public int MaxAttempts { get; set; }
-		public int MinPlayerCount { get; set; }
-		public int MaxPlayerCount { get; set; }
-		public bool HasBackfill { get; set; }
-		public float WaitingTimeForBackfill { get; set; }
-		public bool DoBackfillWithBots { get; set; }
-		public MatchmakingNoPlayerAction ActionForNoPlayers { get; set; }
-	}
-
-	/*
-	{
-	"DelayBetweenAttempts":3,
-	"MaxAttempts":3,
-	"MinPlayerCount":2,
-	"MaxPlayerCount":2,
-	"HasBackfill":false,
-	"WaitingTimeForBackfill":5,
-	"DoBackfillWithBots":false,
-	"ActionForNoPlayers":1,
-	}
-	 
-	 */
-	public enum MatchmakingNoPlayerAction
-	{
-		ReturnFailed,
-		MatchWithBots,
 	}
 }

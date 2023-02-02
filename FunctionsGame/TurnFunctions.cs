@@ -4,7 +4,6 @@ using Azure.Storage.Blobs.Specialized;
 using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Server.Kestrel.Core.Internal.Infrastructure;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Azure.WebJobs.Extensions.Http;
@@ -26,41 +25,20 @@ namespace Kalkatos.FunctionsGame
 			ILogger log)
 		{
 			log.LogInformation($"   [{nameof(StartMatch)}] New match created.");
+			Logger.Setup(log);
 
 			using (Stream stream = await matchesBlobClient.OpenReadAsync())
 			{
 				string matchRegistrySerialized = Helper.ReadBytes(stream);
 				log.LogInformation($"   [{nameof(StartMatch)}] Match info got === {matchRegistrySerialized}");
 				MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(matchRegistrySerialized);
-				await durableFunctionsClient.StartNewAsync(nameof(TurnOrchestrator), match.MatchId, matchRegistrySerialized);
+				await durableFunctionsClient.StartNewAsync(nameof(TurnOrchestrator), match.MatchId, new TurnOrchestratorInfo { Match = match });
 			}
 		}
 
-		[FunctionName(nameof(TurnOrchestrator))]
-		public static async Task TurnOrchestrator (
-			[OrchestrationTrigger] IDurableOrchestrationContext context,
-			ILogger log)
-		{
-			log.LogInformation($"   [{nameof(TurnOrchestrator)}] Started.");
-
-			string matchSerialized = context.GetInput<string>();
-			MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(matchSerialized);
-
-			log.LogInformation($"   [{nameof(TurnOrchestrator)}] Working on match === {match.MatchId}");
-
-			// DEBUG
-			DateTime nextCheck = context.CurrentUtcDateTime.AddSeconds(30);
-			await context.CreateTimer(nextCheck, CancellationToken.None);
-			await context.CallActivityAsync(nameof(DeleteMatch), match);
-
-			// TODO Wait for each player handshake
 
 
-			// TODO Run turn in loops
-		}
 
-
-		// TODO Change to return IActionResult
 		[FunctionName(nameof(SendAction))]
 		public static async Task<string> SendAction (
 			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
@@ -97,13 +75,12 @@ namespace Kalkatos.FunctionsGame
 						PartitionKey = request.MatchId,
 						RowKey = request.PlayerId,
 						ActionName = request.ActionName,
-						SerializedParameter = request.Parameter?.ToString(),
+						SerializedParameter = request.SerializedParameter,
 					});
 					break;
 			}
 
 			// TODO Check parameter
-			request.Parameter = JsonConvert.DeserializeObject(request.Parameter.ToString());
 
 			if (!isActionDefined)
 			{
@@ -114,44 +91,81 @@ namespace Kalkatos.FunctionsGame
 			return JsonConvert.SerializeObject(new ActionResponse { Message = $"Action {request.ActionName} registered." });
 		}
 
+
+
+
+		/// <summary>
+		/// Gets an array of states starting from the index requested up until the last one available.
+		/// </summary>
+		/// <returns> A serialized <typeparamref screenName="StateResponse"/> with the array of states or error message. </returns>
 		[FunctionName(nameof(GetMatchState))]
-		public static async Task<IActionResult> GetMatchState (
+		public static async Task<string> GetMatchState (
 			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
 			ILogger log
 			)
 		{
 			log.LogWarning($"   [{nameof(GetMatchState)}] Started.");
+			Logger.Setup(log);
 
 			StateRequest request = JsonConvert.DeserializeObject<StateRequest>(requestSerialized);
 
-			// Check request
-			if (request == null || string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.MatchId))
-			{
-				log.LogError($"   [{nameof(GetMatchState)}] Wrong Parameters. Request = {requestSerialized}");
-				return new BadRequestObjectResult("Wrong Parameters.");
-			}
+			StateResponse response = await MatchFunctions.GetMatchState(request);
 
-			// Open state blob
-			BlockBlobClient stateBlob = new BlockBlobClient("UseDevelopmentStorage=true", "states", $"{request.MatchId}.json");
-			StateInfo[] stateHistory = null;
-			if (await stateBlob.ExistsAsync())
-			{
-				using (Stream stream = await stateBlob.OpenReadAsync())
-				{
-					StateInfo[] savedHistory = JsonConvert.DeserializeObject<StateInfo[]>(Helper.ReadBytes(stream));
-					stateHistory = new StateInfo[savedHistory.Length + 1];
-					for (int i = 0; i < savedHistory.Length; i++)
-						stateHistory[i] = savedHistory[i];
-				}
-			}
-			else
-				stateHistory = new StateInfo[1];
-
-			// TODO Find out and return new state
-
-
-			return new OkObjectResult("Finished");
+			return JsonConvert.SerializeObject(response);
 		}
+
+
+
+
+		[FunctionName(nameof(TurnOrchestrator))]
+		public static async Task TurnOrchestrator (
+			[OrchestrationTrigger] IDurableOrchestrationContext context,
+			ILogger log)
+		{
+			//log.LogInformation($"   [{nameof(TurnOrchestrator)}] Started.");
+
+			TurnOrchestratorInfo info = context.GetInput<TurnOrchestratorInfo>();
+			MatchRegistry match = info.Match;
+			TurnSettings settings = info.TurnSettings;
+
+			//StateInfo state = await MatchFunctions.PrepareTurn(info.TurnIndex, match, settings);
+			//info.TurnIndex++;
+
+			//if ()
+			//{
+			//	DateTime nextRun = context.CurrentUtcDateTime.AddSeconds(settings.DelayBetweenRuns);
+			//	await context.CreateTimer(nextRun, CancellationToken.None);
+			//	context.ContinueAsNew(info);
+			//}
+			//else
+			//	log.LogInformation($"   [{nameof(MatchmakingOrchestrator)}] The orchestrator has reached max attempts and is finishing off.");
+
+			// DEBUG
+			//DateTime nextCheck = context.CurrentUtcDateTime.AddSeconds(30);
+			//await context.CreateTimer(nextCheck, CancellationToken.None);
+			//await context.CallActivityAsync(nameof(DeleteMatch), match);
+
+			// TODO Wait for each player handshake
+
+
+			// TODO Run turn in loops
+
+			await Task.Delay(1);
+		}
+
+
+
+
+		[FunctionName(nameof(PairPlayersInTable))]
+		public static void PairPlayersInTable (
+			[ActivityTrigger] MatchmakingOrchestratorInfo info,
+			ILogger log)
+		{
+
+		}
+
+
+
 
 		// TODO Move to clean up functions
 		[FunctionName(nameof(DeleteMatch))]
@@ -172,13 +186,26 @@ namespace Kalkatos.FunctionsGame
 			// Delete in matchmaking
 			foreach (var player in match.PlayerIds)
 			{
-				Response response = tableClient.DeleteEntity(match.Region, player, ETag.All);
+				var response = tableClient.DeleteEntity(match.Region, player, ETag.All);
 				if (response.IsError)
 					log.LogError($"   [{nameof(DeleteMatch)}] Error deleting matchmaking entry for player {player} === Message = {response.ReasonPhrase}");
 			}
 
 			// TODO Delete bots
 		}
+	}
+
+	public class TurnOrchestratorInfo
+	{
+		public int TurnIndex;
+		public MatchRegistry Match;
+		public TurnSettings TurnSettings;
+		public StateInfo LastState;
+	}
+
+	public class TurnSettings
+	{
+		public float DelayBetweenRuns;
 	}
 
 	public class PlayerActionEntity : ITableEntity
