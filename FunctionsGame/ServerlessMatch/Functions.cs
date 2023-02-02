@@ -1,9 +1,12 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
+using Newtonsoft.Json;
 
 namespace Kalkatos.FunctionsGame
 {
@@ -61,11 +64,32 @@ namespace Kalkatos.FunctionsGame
 				return new StateResponse { IsError = true, Message = "Match id and player id may not be null." };
 			if (request.LastIndex < 0)
 				return new StateResponse { IsError = true, Message = "LastIndex must be higher or equal to zero." };
+			MatchRegistry match = await service.GetMatchRegistry(request.MatchId);
+			if (match == null)
+				return new StateResponse { IsError = true, Message = "Match not found." };
+			if (!match.HasPlayer(request.PlayerId))
+				return new StateResponse { IsError = true, Message = "Player is not on that match." };
 			if (request.LastIndex == 0)
-				await WaitForAction(new WaitActionRequest { MatchId = request.MatchId, Action = "Handshaking" });
-			StateInfo[] stateHistory = await service.GetStateHistory(request.PlayerId, request.MatchId);
-			if (stateHistory == null || request.LastIndex >= stateHistory.Length)
-				return new StateResponse { IsError = true, Message = "State is not available yet." };
+			{
+				ActionInfo[] actionHistory = await service.GetActionHistory(request.MatchId, null, "Handshaking");
+				string[] playerAliasesInMatch = match.PlayerInfos.Select(info => info.Alias).Distinct().ToArray();
+				string[] playerAliasesWithAction = actionHistory.Select(action => action.PlayerAlias).Distinct().ToArray();
+
+				// DEBUG
+				Logger.Log($"    [GetMatchState] players in match: {JsonConvert.SerializeObject(playerAliasesInMatch)} \n Players with Handshaking: {JsonConvert.SerializeObject(playerAliasesWithAction)}");
+
+				if (!playerAliasesInMatch.SequenceEqual(playerAliasesWithAction))
+					return new StateResponse { IsError = true, Message = "Not every player is ready." };
+			}
+			StateInfo[] stateHistory = await service.GetStateHistory(request.MatchId);
+			if (stateHistory != null && request.LastIndex > stateHistory.Length)
+				return new StateResponse { IsError = true, Message = "State is not ready yet." };
+			StateInfo state = await PrepareTurn(match, stateHistory);
+			if (stateHistory == null)
+				stateHistory = new StateInfo[] { state };
+			else
+				stateHistory.Append(state);
+			await service.SetStateHistory(request.MatchId, stateHistory);
 			int amountRequested = stateHistory.Length - request.LastIndex;
 			StateInfo[] requestedStates = new StateInfo[amountRequested];
 			for (int requestedIndex = 0, historyIndex = stateHistory.Length - 1; 
@@ -77,21 +101,12 @@ namespace Kalkatos.FunctionsGame
 			return new StateResponse { StateInfos = requestedStates };
 		}
 
-		public static async Task WaitForAction (WaitActionRequest request)
+		private static async Task<StateInfo> PrepareTurn (MatchRegistry match, StateInfo[] stateHistory)
 		{
-			MatchRegistry match = await service.GetMatchRegistry(request.MatchId);
-			// TODO Get each player or the listed players in request
-			// TODO For each player, if they are in the request, check if they have done the action
-			await Task.Delay(1);
+			await Task.Delay(100);
+			int currentIndex = stateHistory?.Length ?? 0;
+			return new StateInfo { Index = currentIndex, Properties = { { "Index", currentIndex.ToString() } } };
 		}
-	}
-
-	public class WaitActionRequest
-	{
-		public string MatchId;
-		public string ExpectedPlayers;
-		public string Action;
-		public object ExpectedParameter;
 	}
 
 	public interface IService
@@ -102,11 +117,16 @@ namespace Kalkatos.FunctionsGame
 		Task RegisterDeviceWithId (string deviceId, string playerId);
 		Task<PlayerRegistry> GetPlayerRegistry (string playerId);
 		Task SetPlayerRegistry (PlayerRegistry registry);
+		Task DeletePlayerRegistry (string playerId);
 		// Match
 		Task<MatchRegistry> GetMatchRegistry (string matchId);
+		Task DeleteMatchRegistry (string matchId);
 		// Action
-		Task<ActionInfo> GetPlayerAction (ActionRequest request);
-		// Get Match States
-		Task<StateInfo[]> GetStateHistory (string playerId, string matchId);
+		Task<ActionInfo[]> GetActionHistory (string matchId, string[] players, string actionName);
+		Task DeleteActionHistory (string matchId);
+		// States
+		Task<StateInfo[]> GetStateHistory (string matchId);
+		Task SetStateHistory (string matchId, StateInfo[] states);
+		Task DeleteStateHistory (string matchId);
 	}
 }

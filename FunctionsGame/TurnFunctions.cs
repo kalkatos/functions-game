@@ -1,6 +1,7 @@
 ﻿using Azure;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs.Specialized;
+using Azure.Storage.Queues;
 using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
 using Microsoft.AspNetCore.Mvc;
@@ -32,8 +33,22 @@ namespace Kalkatos.FunctionsGame
 				string matchRegistrySerialized = Helper.ReadBytes(stream);
 				log.LogInformation($"   [{nameof(StartMatch)}] Match info got === {matchRegistrySerialized}");
 				MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(matchRegistrySerialized);
-				await durableFunctionsClient.StartNewAsync(nameof(TurnOrchestrator), match.MatchId, new TurnOrchestratorInfo { Match = match });
+				//await durableFunctionsClient.StartNewAsync(nameof(TurnOrchestrator), match.MatchId, new TurnOrchestratorInfo { Match = match });
+				QueueClient queueClient = new QueueClient("UseDevelopmentStorage=true", "match-deletion");
+				await queueClient.SendMessageAsync(match.MatchId, TimeSpan.FromSeconds(15));
 			}
+		}
+
+
+
+		[FunctionName(nameof(DeleteMatchDebug))]
+		public static async Task DeleteMatchDebug (
+			[QueueTrigger("match-deletion", Connection = "AzureWebJobsStorage")] string matchId,
+			ILogger log)
+		{
+			log.LogWarning($"   [{nameof(DeleteMatchDebug)}] Deleting match: {matchId}");
+			Logger.Setup(log);
+
 		}
 
 
@@ -50,16 +65,31 @@ namespace Kalkatos.FunctionsGame
 			ActionRequest request = JsonConvert.DeserializeObject<ActionRequest>(requestSerialized);
 
 			// Check request
-			if (request == null || string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.MatchId))
+			if (request == null || string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.PlayerAlias) || string.IsNullOrEmpty(request.MatchId))
 			{
 				log.LogError($"   [{nameof(SendAction)}] Wrong Parameters. Request = {requestSerialized}");
 				return JsonConvert.SerializeObject(new ActionResponse { IsError = true, Message = "Wrong Parameters." });
 			}
 
+			// Check if player is in the match
+			BlockBlobClient matchesBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{request.MatchId}.json");
+			if (await matchesBlob.ExistsAsync())
+			{
+				using (Stream stream = await matchesBlob.OpenReadAsync())
+				{
+					MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(Helper.ReadBytes(stream));
+					if (!match.HasPlayer(request.PlayerId))
+						return JsonConvert.SerializeObject(new ActionResponse { IsError = true, Message = "Player is not registered for that match." });
+				}
+			}
+			else
+				return JsonConvert.SerializeObject(new ActionResponse { IsError = true, Message = "Match does not exist." });
+
 			// Open action table
 			TableClient actionTable = new TableClient("UseDevelopmentStorage=true", "ActionHistory");
 
 			bool isActionDefined = false;
+
 			// TODO Check game rules if this action is expected
 
 			// Check default actions
@@ -74,6 +104,7 @@ namespace Kalkatos.FunctionsGame
 					{
 						PartitionKey = request.MatchId,
 						RowKey = request.PlayerId,
+						PlayerAlias = request.PlayerAlias,
 						ActionName = request.ActionName,
 						SerializedParameter = request.SerializedParameter,
 					});
@@ -156,17 +187,6 @@ namespace Kalkatos.FunctionsGame
 
 
 
-		[FunctionName(nameof(PairPlayersInTable))]
-		public static void PairPlayersInTable (
-			[ActivityTrigger] MatchmakingOrchestratorInfo info,
-			ILogger log)
-		{
-
-		}
-
-
-
-
 		// TODO Move to clean up functions
 		[FunctionName(nameof(DeleteMatch))]
 		public static void DeleteMatch (
@@ -191,7 +211,11 @@ namespace Kalkatos.FunctionsGame
 					log.LogError($"   [{nameof(DeleteMatch)}] Error deleting matchmaking entry for player {player} === Message = {response.ReasonPhrase}");
 			}
 
-			// TODO Delete bots
+			// TODO Delete Action History
+
+			// TODO Delete State History
+
+			// TODO Delete bots bound to that match
 		}
 	}
 
@@ -211,7 +235,8 @@ namespace Kalkatos.FunctionsGame
 	public class PlayerActionEntity : ITableEntity
 	{
 		public string PartitionKey { get; set; } // Match ID
-		public string RowKey { get; set; } // Player Alias
+		public string RowKey { get; set; } // Player ID
+		public string PlayerAlias { get; set; }
 		public string ActionName { get; set; }
 		public string SerializedParameter { get; set; }
 		public DateTimeOffset? Timestamp { get; set; }

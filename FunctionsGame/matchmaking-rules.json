@@ -1,0 +1,10 @@
+{
+	"DelayBetweenAttempts":2.0,
+	"MaxAttempts":3,
+	"MinPlayerCount":2,
+	"MaxPlayerCount":2,
+	"HasBackfill":false,
+	"WaitingTimeForBackfill":5,
+	"DoBackfillWithBots":false,
+	"ActionForNoPlayers":1
+}
