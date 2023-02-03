@@ -1,54 +1,54 @@
-﻿using Azure;
+﻿using System;
+using System.IO;
+using System.Text;
+using System.Threading.Tasks;
+using Azure;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs.Specialized;
 using Azure.Storage.Queues;
 using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.DurableTask;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using System;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Kalkatos.FunctionsGame
 {
 	public static class TurnFunctions
 	{
-		[FunctionName(nameof(StartMatch))]
-		public static async Task StartMatch (
-			[BlobTrigger("matches", Connection = "AzureWebJobsStorage")] BlockBlobClient matchesBlobClient,
-			[DurableClient] IDurableOrchestrationClient durableFunctionsClient,
-			ILogger log)
-		{
-			log.LogInformation($"   [{nameof(StartMatch)}] New match created.");
-			Logger.Setup(log);
+		//[FunctionName(nameof(StartMatch))]
+		//public static async Task StartMatch (
+		//	[BlobTrigger("matches", Connection = "AzureWebJobsStorage")] BlockBlobClient matchesBlobClient,
+		//	//[DurableClient] IDurableOrchestrationClient durableFunctionsClient,
+		//	ILogger log)
+		//{
+		//	log.LogInformation($"   [{nameof(StartMatch)}] New match created.");
+		//	Logger.Setup(log);
 
-			using (Stream stream = await matchesBlobClient.OpenReadAsync())
-			{
-				string matchRegistrySerialized = Helper.ReadBytes(stream);
-				log.LogInformation($"   [{nameof(StartMatch)}] Match info got === {matchRegistrySerialized}");
-				MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(matchRegistrySerialized);
-				//await durableFunctionsClient.StartNewAsync(nameof(TurnOrchestrator), match.MatchId, new TurnOrchestratorInfo { Match = match });
-				QueueClient queueClient = new QueueClient("UseDevelopmentStorage=true", "match-deletion");
-				await queueClient.SendMessageAsync(match.MatchId, TimeSpan.FromSeconds(15));
-			}
-		}
+		//	string matchRegistrySerialized;
+		//	using (Stream stream = await matchesBlobClient.OpenReadAsync())
+		//		matchRegistrySerialized = Helper.ReadBytes(stream);
+		//	log.LogInformation($"   [{nameof(StartMatch)}] Match info got === {matchRegistrySerialized}");
+		//	MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(matchRegistrySerialized);
+		//	//await durableFunctionsClient.StartNewAsync(nameof(TurnOrchestrator), match.MatchId, new TurnOrchestratorInfo { Match = match });
+		//	QueueClient queueClient = new QueueClient("UseDevelopmentStorage=true", "match-deletion");
+		//	await queueClient.SendMessageAsync(Convert.ToBase64String(Encoding.UTF8.GetBytes(match.MatchId)), TimeSpan.FromSeconds(30));
+		//}
+
 
 
 
 		[FunctionName(nameof(DeleteMatchDebug))]
 		public static async Task DeleteMatchDebug (
-			[QueueTrigger("match-deletion", Connection = "AzureWebJobsStorage")] string matchId,
+			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string matchId,
 			ILogger log)
 		{
 			log.LogWarning($"   [{nameof(DeleteMatchDebug)}] Deleting match: {matchId}");
 			Logger.Setup(log);
 
+			await MatchFunctions.DeleteMatch(matchId);
 		}
 
 

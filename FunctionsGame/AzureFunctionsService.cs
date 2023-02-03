@@ -56,6 +56,22 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 				await playerBlob.DeleteAsync();
 		}
 
+		// Matchmaking
+
+		public async Task DeleteMatchmakingHistory (string playerId, string matchId)
+		{
+			TableClient matchmakingTable = new TableClient("UseDevelopmentStorage=true", "Matchmaking");
+			Azure.Pageable<PlayerLookForMatchEntity> query;
+			if (string.IsNullOrEmpty(matchId))
+				query = matchmakingTable.Query<PlayerLookForMatchEntity>(entry => entry.RowKey == playerId);
+			else if (string.IsNullOrEmpty(playerId))
+				query = matchmakingTable.Query<PlayerLookForMatchEntity>(entry => entry.MatchId == matchId);
+			else
+				query = matchmakingTable.Query<PlayerLookForMatchEntity>(entry => entry.MatchId == matchId && entry.RowKey == playerId);
+			foreach (var item in query)
+				await matchmakingTable.DeleteEntityAsync(item.PartitionKey, item.RowKey);
+		}
+
 		// Match
 
 		public async Task<MatchRegistry> GetMatchRegistry (string matchId)
@@ -67,7 +83,7 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 
 		public async Task DeleteMatchRegistry (string matchId)
 		{
-			BlockBlobClient matchBlob = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{matchId}.json");
+			BlockBlobClient matchBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{matchId}.json");
 			if (await matchBlob.ExistsAsync())
 				await matchBlob.DeleteAsync();
 		}

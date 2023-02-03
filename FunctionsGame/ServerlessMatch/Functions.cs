@@ -101,6 +101,16 @@ namespace Kalkatos.FunctionsGame
 			return new StateResponse { StateInfos = requestedStates };
 		}
 
+		public static async Task DeleteMatch (string matchId)
+		{
+			if (matchId == null) 
+				return;
+			await service.DeleteMatchmakingHistory(null, matchId);
+			await service.DeleteActionHistory(matchId);
+			await service.DeleteStateHistory(matchId);
+			await service.DeleteMatchRegistry(matchId);
+		}
+
 		private static async Task<StateInfo> PrepareTurn (MatchRegistry match, StateInfo[] stateHistory)
 		{
 			await Task.Delay(100);
@@ -118,6 +128,8 @@ namespace Kalkatos.FunctionsGame
 		Task<PlayerRegistry> GetPlayerRegistry (string playerId);
 		Task SetPlayerRegistry (PlayerRegistry registry);
 		Task DeletePlayerRegistry (string playerId);
+		// Matchmaking
+		Task DeleteMatchmakingHistory (string playerId, string matchId);
 		// Match
 		Task<MatchRegistry> GetMatchRegistry (string matchId);
 		Task DeleteMatchRegistry (string matchId);
