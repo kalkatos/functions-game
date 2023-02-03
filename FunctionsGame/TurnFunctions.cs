@@ -39,7 +39,6 @@ namespace Kalkatos.FunctionsGame
 
 
 
-
 		[FunctionName(nameof(DeleteMatchDebug))]
 		public static async Task DeleteMatchDebug (
 			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string matchId,
@@ -50,6 +49,11 @@ namespace Kalkatos.FunctionsGame
 
 			await MatchFunctions.DeleteMatch(matchId);
 		}
+
+
+
+
+		// TODO Add one to delete all matches!
 
 
 

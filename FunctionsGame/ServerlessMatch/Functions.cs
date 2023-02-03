@@ -115,7 +115,7 @@ namespace Kalkatos.FunctionsGame
 		{
 			await Task.Delay(100);
 			int currentIndex = stateHistory?.Length ?? 0;
-			return new StateInfo { Index = currentIndex, Properties = { { "Index", currentIndex.ToString() } } };
+			return new StateInfo { Index = currentIndex, Properties = new Dictionary<string, string> { { "Index", currentIndex.ToString() } } };
 		}
 	}
 
