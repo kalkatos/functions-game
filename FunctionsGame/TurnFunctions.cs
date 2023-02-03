@@ -1,11 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using System.Threading.Tasks;
 using Azure;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs.Specialized;
-using Azure.Storage.Queues;
 using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
 using Microsoft.Azure.WebJobs;
@@ -54,6 +53,21 @@ namespace Kalkatos.FunctionsGame
 
 
 		// TODO Add one to delete all matches!
+		[FunctionName(nameof(DeleteAllMatchesDebug))]
+		public static async Task DeleteAllMatchesDebug (
+			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string any,
+			[Blob("matches", Connection = "AzureWebJobsStorage")] IEnumerable<string> blobs,
+			ILogger log)
+		{
+			log.LogWarning($"   [{nameof(DeleteAllMatchesDebug)}] Deleting all matches.");
+			Logger.Setup(log);
+
+			foreach (var item in blobs)
+			{
+				MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(item);
+				await MatchFunctions.DeleteMatch(match.MatchId);
+			}
+		}
 
 
 
