@@ -67,9 +67,11 @@ namespace Kalkatos.FunctionsGame
 			MatchRegistry match = await service.GetMatchRegistry(request.MatchId);
 			if (match == null)
 				return new StateResponse { IsError = true, Message = "Match not found." };
+			if (match.IsEnded)
+				return new StateResponse { IsError = true, Message = "Match is over." };
 			if (!match.HasPlayer(request.PlayerId))
 				return new StateResponse { IsError = true, Message = "Player is not on that match." };
-			if (request.LastIndex == 0)
+			if (request.LastIndex == 0 && !match.IsStarted)
 			{
 				ActionInfo[] actionHistory = await service.GetActionHistory(request.MatchId, null, "Handshaking");
 				string[] playerAliasesInMatch = match.PlayerInfos.Select(info => info.Alias).Distinct().ToArray();
@@ -80,16 +82,21 @@ namespace Kalkatos.FunctionsGame
 
 				if (!playerAliasesInMatch.SequenceEqual(playerAliasesWithAction))
 					return new StateResponse { IsError = true, Message = "Not every player is ready." };
+				else
+				{
+					match.IsStarted = true;
+					await service.SetMatchRegistry(match);
+					StateInfo[] newStateHistory = new StateInfo[] { await PrepareTurn(match, null) };
+					await service.SetStateHistory(request.MatchId, newStateHistory);
+					return new StateResponse { StateInfos = newStateHistory };
+				}	
 			}
 			StateInfo[] stateHistory = await service.GetStateHistory(request.MatchId);
-			if (stateHistory != null && request.LastIndex > stateHistory.Length)
-				return new StateResponse { IsError = true, Message = "State is not ready yet." };
-			StateInfo state = await PrepareTurn(match, stateHistory);
-			if (stateHistory == null)
-				stateHistory = new StateInfo[] { state };
-			else
-				stateHistory.Append(state);
-			await service.SetStateHistory(request.MatchId, stateHistory);
+			if (stateHistory != null)
+			{
+				if (request.LastIndex >= stateHistory.Length)
+					return new StateResponse { IsError = true, Message = "State is not ready yet." };
+			}
 			int amountRequested = stateHistory.Length - request.LastIndex;
 			StateInfo[] requestedStates = new StateInfo[amountRequested];
 			for (int requestedIndex = 0, historyIndex = stateHistory.Length - 1; 
@@ -132,6 +139,7 @@ namespace Kalkatos.FunctionsGame
 		Task DeleteMatchmakingHistory (string playerId, string matchId);
 		// Match
 		Task<MatchRegistry> GetMatchRegistry (string matchId);
+		Task SetMatchRegistry (MatchRegistry matchRegistry);
 		Task DeleteMatchRegistry (string matchId);
 		// Action
 		Task<ActionInfo[]> GetActionHistory (string matchId, string[] players, string actionName);

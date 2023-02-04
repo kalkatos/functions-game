@@ -9,6 +9,7 @@ namespace Kalkatos.FunctionsGame.Registry
         public string[] PlayerIds;
         public PlayerInfo[] PlayerInfos;
 		public string Region;
+        public bool IsStarted;
         public bool IsEnded;
         public bool HasBots;
         public DateTime CreatedTime;

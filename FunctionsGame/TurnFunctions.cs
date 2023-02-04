@@ -110,11 +110,12 @@ namespace Kalkatos.FunctionsGame
 
 			// TODO Check game rules if this action is expected
 
+
 			// Check default actions
 			switch (request.ActionName)
 			{
-				case "Action1":
-				case "Action2":
+				case "Play":
+				case "Move":
 				case "Handshaking":
 				case "LeaveMatch":
 					isActionDefined = true;

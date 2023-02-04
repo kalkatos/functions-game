@@ -77,8 +77,10 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 		public async Task<MatchRegistry> GetMatchRegistry (string matchId)
 		{
 			BlockBlobClient matchBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{matchId}.json");
-			using (Stream stream = await matchBlob.OpenReadAsync(true))
-				return JsonConvert.DeserializeObject<MatchRegistry>(Helper.ReadBytes(stream));
+			if (await matchBlob.ExistsAsync())
+				using (Stream stream = await matchBlob.OpenReadAsync(true))
+					return JsonConvert.DeserializeObject<MatchRegistry>(Helper.ReadBytes(stream));
+			return null;
 		}
 
 		public async Task DeleteMatchRegistry (string matchId)
@@ -86,6 +88,13 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 			BlockBlobClient matchBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{matchId}.json");
 			if (await matchBlob.ExistsAsync())
 				await matchBlob.DeleteAsync();
+		}
+
+		public async Task SetMatchRegistry (MatchRegistry matchRegistry)
+		{
+			BlockBlobClient matchBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{matchRegistry.MatchId}.json");
+			using Stream stream = await matchBlob.OpenWriteAsync(true);
+			stream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(matchRegistry)));
 		}
 
 		// Action
