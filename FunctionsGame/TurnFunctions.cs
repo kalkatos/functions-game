@@ -119,7 +119,7 @@ namespace Kalkatos.FunctionsGame
 				case "Handshaking":
 				case "LeaveMatch":
 					isActionDefined = true;
-					await actionTable.AddEntityAsync(new PlayerActionEntity
+					await actionTable.UpsertEntityAsync(new PlayerActionEntity
 					{
 						PartitionKey = request.MatchId,
 						RowKey = request.PlayerId,
@@ -255,6 +255,7 @@ namespace Kalkatos.FunctionsGame
 	{
 		public string PartitionKey { get; set; } // Match ID
 		public string RowKey { get; set; } // Player ID
+		public string Content { get; set; }
 		public string PlayerAlias { get; set; }
 		public string ActionName { get; set; }
 		public string SerializedParameter { get; set; }

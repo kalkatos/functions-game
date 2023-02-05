@@ -8,6 +8,7 @@ using Kalkatos.FunctionsGame.Registry;
 using Azure.Data.Tables;
 using System.Linq;
 using System;
+using System.Collections.Generic;
 
 namespace Kalkatos.FunctionsGame.AzureFunctions
 {
@@ -99,6 +100,12 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 
 		// Action
 
+		public async Task RegisterAction (string matchId, string playerId, Dictionary<string, string> content)
+		{
+			TableClient actionsTable = new TableClient("UseDevelopmentStorage=true", "ActionHistory");
+			await actionsTable.UpsertEntityAsync(new PlayerActionEntity { PartitionKey = matchId, RowKey = playerId, Content = JsonConvert.SerializeObject(content) });
+		}
+
 		public async Task<ActionInfo[]> GetActionHistory (string matchId, string[] players, string actionName)
 		{
 			await Task.Delay(1);
@@ -149,17 +156,17 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 
 		// State
 
-		public async Task<StateInfo[]> GetStateHistory (string matchId)
+		public async Task<StateRegistry[]> GetStateHistory (string matchId)
 		{
 			BlockBlobClient stateBlob = new BlockBlobClient("UseDevelopmentStorage=true", "states", $"{matchId}.json");
-			StateInfo[] stateHistory = null;
+			StateRegistry[] stateHistory = null;
 			if (await stateBlob.ExistsAsync())
 				using (Stream stream = await stateBlob.OpenReadAsync())
-					stateHistory = JsonConvert.DeserializeObject<StateInfo[]>(Helper.ReadBytes(stream));
+					stateHistory = JsonConvert.DeserializeObject<StateRegistry[]>(Helper.ReadBytes(stream));
 			return stateHistory;
 		}
 
-		public async Task SetStateHistory (string matchId, StateInfo[] states)
+		public async Task SetStateHistory (string matchId, StateRegistry[] states)
 		{
 			BlockBlobClient stateBlob = new BlockBlobClient("UseDevelopmentStorage=true", "states", $"{matchId}.json");
 			using (Stream stream = await stateBlob.OpenWriteAsync(true))
