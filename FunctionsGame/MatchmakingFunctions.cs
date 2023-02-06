@@ -206,9 +206,9 @@ namespace Kalkatos.FunctionsGame
 				{
 					string actionResponseSerialized = await TurnFunctions.SendAction(JsonConvert.SerializeObject(new ActionRequest
 					{
-						ActionName = "LeaveMatch",
 						PlayerId = request.PlayerId,
-						MatchId = item.MatchId
+						MatchId = item.MatchId,
+						PrivateChanges = new Dictionary<string, string> { { "LeaveMatch", "1" } }
 					}), log);
 					log.LogInformation($"   [{nameof(LeaveMatch)}] Sent action to leave match. ActionResponse = {actionResponseSerialized}");
 					return JsonConvert.SerializeObject(new MatchResponse { MatchId = item.MatchId, Message = "Sent action to leave match." });

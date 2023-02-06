@@ -82,63 +82,67 @@ namespace Kalkatos.FunctionsGame
 
 			ActionRequest request = JsonConvert.DeserializeObject<ActionRequest>(requestSerialized);
 
-			// Check request
-			if (request == null || string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.PlayerAlias) || string.IsNullOrEmpty(request.MatchId))
-			{
-				log.LogError($"   [{nameof(SendAction)}] Wrong Parameters. Request = {requestSerialized}");
-				return JsonConvert.SerializeObject(new ActionResponse { IsError = true, Message = "Wrong Parameters." });
-			}
+			ActionResponse response = await MatchFunctions.SendAction(request);
 
-			// Check if player is in the match
-			BlockBlobClient matchesBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{request.MatchId}.json");
-			if (await matchesBlob.ExistsAsync())
-			{
-				using (Stream stream = await matchesBlob.OpenReadAsync())
-				{
-					MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(Helper.ReadBytes(stream));
-					if (!match.HasPlayer(request.PlayerId))
-						return JsonConvert.SerializeObject(new ActionResponse { IsError = true, Message = "Player is not registered for that match." });
-				}
-			}
-			else
-				return JsonConvert.SerializeObject(new ActionResponse { IsError = true, Message = "Match does not exist." });
+			return JsonConvert.SerializeObject(response);
 
-			// Open action table
-			TableClient actionTable = new TableClient("UseDevelopmentStorage=true", "ActionHistory");
+			//// Check request
+			//if (request == null || string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.PlayerAlias) || string.IsNullOrEmpty(request.MatchId))
+			//{
+			//	log.LogError($"   [{nameof(SendAction)}] Wrong Parameters. Request = {requestSerialized}");
+			//	return JsonConvert.SerializeObject(new ActionResponse { IsError = true, Message = "Wrong Parameters." });
+			//}
 
-			bool isActionDefined = false;
+			//// Check if player is in the match
+			//BlockBlobClient matchesBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{request.MatchId}.json");
+			//if (await matchesBlob.ExistsAsync())
+			//{
+			//	using (Stream stream = await matchesBlob.OpenReadAsync())
+			//	{
+			//		MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(Helper.ReadBytes(stream));
+			//		if (!match.HasPlayer(request.PlayerId))
+			//			return JsonConvert.SerializeObject(new ActionResponse { IsError = true, Message = "Player is not registered for that match." });
+			//	}
+			//}
+			//else
+			//	return JsonConvert.SerializeObject(new ActionResponse { IsError = true, Message = "Match does not exist." });
 
-			// TODO Check game rules if this action is expected
+			//// Open action table
+			//TableClient actionTable = new TableClient("UseDevelopmentStorage=true", "ActionHistory");
+
+			//bool isActionDefined = false;
+
+			//// TODO Check game rules if this action is expected
 
 
-			// Check default actions
-			switch (request.ActionName)
-			{
-				case "Play":
-				case "Move":
-				case "Handshaking":
-				case "LeaveMatch":
-					isActionDefined = true;
-					await actionTable.UpsertEntityAsync(new PlayerActionEntity
-					{
-						PartitionKey = request.MatchId,
-						RowKey = request.PlayerId,
-						PlayerAlias = request.PlayerAlias,
-						ActionName = request.ActionName,
-						SerializedParameter = request.SerializedParameter,
-					});
-					break;
-			}
+			//// Check default actions
+			//switch (request.ActionName)
+			//{
+			//	case "Play":
+			//	case "Move":
+			//	case "Handshaking":
+			//	case "LeaveMatch":
+			//		isActionDefined = true;
+			//		await actionTable.UpsertEntityAsync(new PlayerActionEntity
+			//		{
+			//			PartitionKey = request.MatchId,
+			//			RowKey = request.PlayerId,
+			//			PlayerAlias = request.PlayerAlias,
+			//			ActionName = request.ActionName,
+			//			SerializedParameter = request.SerializedParameter,
+			//		});
+			//		break;
+			//}
 
-			// TODO Check parameter
+			//// TODO Check parameter
 
-			if (!isActionDefined)
-			{
-				log.LogError($"   [{nameof(SendAction)}] Action not defined. Request = {requestSerialized}");
-				return JsonConvert.SerializeObject(new ActionResponse { IsError = true, Message = $"Action not defined: {request.ActionName}" }); 
-			}
-			log.LogInformation($"   [{nameof(SendAction)}] Action Registered. Request = {requestSerialized}");
-			return JsonConvert.SerializeObject(new ActionResponse { Message = $"Action {request.ActionName} registered." });
+			//if (!isActionDefined)
+			//{
+			//	log.LogError($"   [{nameof(SendAction)}] Action not defined. Request = {requestSerialized}");
+			//	return JsonConvert.SerializeObject(new ActionResponse { IsError = true, Message = $"Action not defined: {request.ActionName}" }); 
+			//}
+			//log.LogInformation($"   [{nameof(SendAction)}] Action Registered. Request = {requestSerialized}");
+			//return JsonConvert.SerializeObject(new ActionResponse { Message = $"Action {request.ActionName} registered." });
 		}
 
 

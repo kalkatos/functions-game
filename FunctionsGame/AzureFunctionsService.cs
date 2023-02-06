@@ -100,80 +100,80 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 
 		// Action
 
-		public async Task RegisterAction (string matchId, string playerId, Dictionary<string, string> content)
-		{
-			TableClient actionsTable = new TableClient("UseDevelopmentStorage=true", "ActionHistory");
-			await actionsTable.UpsertEntityAsync(new PlayerActionEntity { PartitionKey = matchId, RowKey = playerId, Content = JsonConvert.SerializeObject(content) });
-		}
+		//public async Task RegisterAction (string matchId, string playerId, Dictionary<string, string> content)
+		//{
+		//	TableClient actionsTable = new TableClient("UseDevelopmentStorage=true", "ActionHistory");
+		//	await actionsTable.UpsertEntityAsync(new PlayerActionEntity { PartitionKey = matchId, RowKey = playerId, Content = JsonConvert.SerializeObject(content) });
+		//}
 
-		public async Task<ActionInfo[]> GetActionHistory (string matchId, string[] players, string actionName)
-		{
-			await Task.Delay(1);
-			TableClient actionsTable = new TableClient("UseDevelopmentStorage=true", "ActionHistory");
-			Azure.Pageable<PlayerActionEntity> query;
-			if (!string.IsNullOrEmpty(actionName))
-			{
-				if (players == null)
-					query = actionsTable.Query<PlayerActionEntity>(entry =>
-						entry.PartitionKey == matchId &&
-						entry.ActionName == actionName);
-				else
-					query = actionsTable.Query<PlayerActionEntity>(entry =>
-						entry.PartitionKey == matchId &&
-						Array.IndexOf(players, entry.RowKey) >= 0 &&  // TODO Test getting action history with an array of players
-						entry.ActionName == actionName);
-			}
-			else
-			{
-				if (players == null)
-					query = actionsTable.Query<PlayerActionEntity>(entry =>
-						entry.PartitionKey == matchId);
-				else
-					query = actionsTable.Query<PlayerActionEntity>(entry =>
-						entry.PartitionKey == matchId &&
-						Array.IndexOf(players, entry.RowKey) >= 0);
-			}
-			int count = query.Count();
-			if (count == 0)
-				return null;
-			ActionInfo[] actions = new ActionInfo[count];
-			int index = 0;
-			foreach (var item in query)
-			{
-				actions[index] = new ActionInfo { PlayerAlias = item.PlayerAlias, ActionName = item.ActionName, Parameter = JsonConvert.DeserializeObject(item.SerializedParameter) };
-				index++;
-			}
-			return actions;
-		}
+		//public async Task<ActionInfo[]> GetActionHistory (string matchId, string[] players, string actionName)
+		//{
+		//	await Task.Delay(1);
+		//	TableClient actionsTable = new TableClient("UseDevelopmentStorage=true", "ActionHistory");
+		//	Azure.Pageable<PlayerActionEntity> query;
+		//	if (!string.IsNullOrEmpty(actionName))
+		//	{
+		//		if (players == null)
+		//			query = actionsTable.Query<PlayerActionEntity>(entry =>
+		//				entry.PartitionKey == matchId &&
+		//				entry.ActionName == actionName);
+		//		else
+		//			query = actionsTable.Query<PlayerActionEntity>(entry =>
+		//				entry.PartitionKey == matchId &&
+		//				Array.IndexOf(players, entry.RowKey) >= 0 &&  // TODO Test getting action history with an array of players
+		//				entry.ActionName == actionName);
+		//	}
+		//	else
+		//	{
+		//		if (players == null)
+		//			query = actionsTable.Query<PlayerActionEntity>(entry =>
+		//				entry.PartitionKey == matchId);
+		//		else
+		//			query = actionsTable.Query<PlayerActionEntity>(entry =>
+		//				entry.PartitionKey == matchId &&
+		//				Array.IndexOf(players, entry.RowKey) >= 0);
+		//	}
+		//	int count = query.Count();
+		//	if (count == 0)
+		//		return null;
+		//	ActionInfo[] actions = new ActionInfo[count];
+		//	int index = 0;
+		//	foreach (var item in query)
+		//	{
+		//		actions[index] = new ActionInfo { PlayerAlias = item.PlayerAlias, ActionName = item.ActionName, Parameter = JsonConvert.DeserializeObject(item.SerializedParameter) };
+		//		index++;
+		//	}
+		//	return actions;
+		//}
 
-		public async Task DeleteActionHistory (string matchId)
-		{
-			TableClient actionsTable = new TableClient("UseDevelopmentStorage=true", "ActionHistory");
-			Azure.Pageable<PlayerActionEntity> query = actionsTable.Query<PlayerActionEntity>(entry => entry.PartitionKey == matchId);
-			foreach (var item in query)
-				await actionsTable.DeleteEntityAsync(item.PartitionKey, item.RowKey);
-		}
+		//public async Task DeleteActionHistory (string matchId)
+		//{
+		//	TableClient actionsTable = new TableClient("UseDevelopmentStorage=true", "ActionHistory");
+		//	Azure.Pageable<PlayerActionEntity> query = actionsTable.Query<PlayerActionEntity>(entry => entry.PartitionKey == matchId);
+		//	foreach (var item in query)
+		//		await actionsTable.DeleteEntityAsync(item.PartitionKey, item.RowKey);
+		//}
 
 		// State
 
-		public async Task<StateRegistry[]> GetStateHistory (string matchId)
+		public async Task<StateRegistry> GetState (string matchId)
 		{
 			BlockBlobClient stateBlob = new BlockBlobClient("UseDevelopmentStorage=true", "states", $"{matchId}.json");
-			StateRegistry[] stateHistory = null;
+			StateRegistry state = null;
 			if (await stateBlob.ExistsAsync())
 				using (Stream stream = await stateBlob.OpenReadAsync())
-					stateHistory = JsonConvert.DeserializeObject<StateRegistry[]>(Helper.ReadBytes(stream));
-			return stateHistory;
+					state = JsonConvert.DeserializeObject<StateRegistry>(Helper.ReadBytes(stream));
+			return state;
 		}
 
-		public async Task SetStateHistory (string matchId, StateRegistry[] states)
+		public async Task SetState (string matchId, StateRegistry state)
 		{
 			BlockBlobClient stateBlob = new BlockBlobClient("UseDevelopmentStorage=true", "states", $"{matchId}.json");
 			using (Stream stream = await stateBlob.OpenWriteAsync(true))
-				stream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(states)));
+				stream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(state)));
 		}
 
-		public async Task DeleteStateHistory (string matchId)
+		public async Task DeleteState (string matchId)
 		{
 			BlockBlobClient statesBlob = new BlockBlobClient("UseDevelopmentStorage=true", "states", $"{matchId}.json");
 			if (await statesBlob.ExistsAsync())
