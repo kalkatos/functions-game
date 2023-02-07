@@ -9,6 +9,7 @@ namespace Kalkatos.FunctionsGame.Registry
 		public int Index;
 		public Dictionary<string, string> PublicProperties;
 		public PrivateState[] PrivateStates;
+		public int Hash;
 
 		public StateInfo GetStateInfo (string playerId)
 		{
@@ -16,9 +17,9 @@ namespace Kalkatos.FunctionsGame.Registry
 			StateInfo stateInfo = new StateInfo
 			{
 				PublicProperties = PublicProperties.ToDictionary(e => e.Key, e => e.Value),
-				PrivateProperties = playerPrivateState.Properties.ToDictionary(e => e.Key, e => e.Value)
+				PrivateProperties = playerPrivateState.Properties.ToDictionary(e => e.Key, e => e.Value),
+				Hash = Hash
 			};
-			HashState(stateInfo);
 			return stateInfo;
 		}
 
@@ -31,28 +32,32 @@ namespace Kalkatos.FunctionsGame.Registry
 			{
 				Index = Index,
 				PublicProperties = PublicProperties.ToDictionary(e => e.Key, e => e.Value),
-				PrivateStates = privateStatesClone
+				PrivateStates = privateStatesClone,
+				Hash = Hash
 			};
 		}
 
-		private void HashState (StateInfo stateInfo)
+		public void UpdateHash ()
 		{
 			unchecked
 			{
-				stateInfo.Hash = 23;
-				foreach (var item in stateInfo.PublicProperties)
+				Hash = 23;
+				foreach (var item in PublicProperties)
 				{
 					foreach (char c in item.Key)
-						stateInfo.Hash = stateInfo.Hash * 31 + c;
+						Hash = Hash * 31 + c;
 					foreach (char c in item.Value)
-						stateInfo.Hash = stateInfo.Hash * 31 + c;
+						Hash = Hash * 31 + c;
 				}
-				foreach (var item in stateInfo.PrivateProperties)
+				foreach (var item in PrivateStates)
 				{
-					foreach (char c in item.Key)
-						stateInfo.Hash = stateInfo.Hash * 31 + c;
-					foreach (char c in item.Value)
-						stateInfo.Hash = stateInfo.Hash * 31 + c;
+					foreach (var playerState in item.Properties)
+					{
+						foreach (char c in playerState.Key)
+							Hash = Hash * 31 + c;
+						foreach (char c in playerState.Value)
+							Hash = Hash * 31 + c;
+					}
 				}
 			}
 		}

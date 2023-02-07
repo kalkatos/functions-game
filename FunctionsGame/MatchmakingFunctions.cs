@@ -392,12 +392,28 @@ namespace Kalkatos.FunctionsGame
 					Region = region,
 					HasBots = hasBots,
 					IsEnded = false,
+					IsStarted = true,
 					CreatedTime = DateTime.UtcNow,
 					LastUpdatedTime = DateTime.UtcNow,
 				};
+
 				BlockBlobClient blobClient = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{newMatchId}.json");
 				using Stream stream = blobClient.OpenWrite(true);
 				stream.Write(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(matchInfo)));
+
+				BlockBlobClient stateBlob = new BlockBlobClient("UseDevelopmentStorage=true", "states", $"{newMatchId}.json");
+				PrivateState[] privateStates = new PrivateState[matchInfo.PlayerIds.Length];
+				for (int i = 0; i < privateStates.Length; i++)
+					privateStates[i] = new PrivateState { PlayerId = matchInfo.PlayerIds[i], Properties = new Dictionary<string, string>() };
+				StateRegistry newStateRegistry = new StateRegistry
+				{
+					Index = 0,
+					PublicProperties = new Dictionary<string, string>(),
+					PrivateStates = privateStates
+				};
+				newStateRegistry.UpdateHash();
+				using (Stream stream2 = stateBlob.OpenWrite(true))
+					stream2.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(newStateRegistry)));
 			}
 		}
 

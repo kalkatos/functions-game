@@ -91,11 +91,14 @@ namespace Kalkatos.FunctionsGame
 				else
 					playerState.Properties.Add(item.Key, item.Value);
 			}
-			await service.SetState(request.MatchId, state);
+			newState.UpdateHash();
+			if (state != null && state.Hash == newState.Hash)
+				return new ActionResponse { IsError = true, Message = "Action is already registered." };
 
 			// DEBUG
-			Logger.Log($"    [SendAction] New State: {JsonConvert.SerializeObject(newState)}");
-
+			Logger.LogWarning($"   [SendAction] Setting state: {JsonConvert.SerializeObject(newState)}");
+			
+			await service.SetState(request.MatchId, newState);
 			return new ActionResponse { AlteredState = newState.GetStateInfo(request.PlayerId) };
 		}
 
@@ -135,19 +138,24 @@ namespace Kalkatos.FunctionsGame
 			await service.DeleteMatchRegistry(matchId);
 		}
 
+
 		// ===========  P R I V A T E  =================
 
-		private static async Task<StateRegistry> InitializeMatch (MatchRegistry match)
+		// Temporarily public
+		public static async Task<StateRegistry> InitializeMatch (MatchRegistry match)
 		{
 			match.IsStarted = true;
 			await service.SetMatchRegistry(match);
 			StateRegistry firstState = CreateNewState(match);
+			Logger.LogWarning($"    [InitializeMatch] Setting state: {JsonConvert.SerializeObject(firstState)}");
 			await service.SetState(match.MatchId, firstState);
 			return firstState;
 		}
 
 		private static bool HasHandshakingFromAllPlayers (StateRegistry state)
 		{
+			if (state == null || state.PublicProperties == null || state.PrivateStates == null)
+				return false;
 			return state.PrivateStates.Count(item =>
 					item.Properties.ContainsKey("Handshaking")
 					&& item.Properties["Handshaking"] == "1") == state.PrivateStates.Length;
@@ -158,12 +166,14 @@ namespace Kalkatos.FunctionsGame
 			PrivateState[] privateStates = new PrivateState[match.PlayerIds.Length];
 			for (int i = 0; i < privateStates.Length; i++)
 				privateStates[i] = new PrivateState { PlayerId = match.PlayerIds[i], Properties = new Dictionary<string, string>() };
-			return new StateRegistry
+			StateRegistry newRegistry = new StateRegistry
 			{
 				Index = 0,
 				PublicProperties = new Dictionary<string, string>(),
 				PrivateStates = privateStates
 			};
+			newRegistry.UpdateHash();
+			return newRegistry;
 		}
 	}
 
