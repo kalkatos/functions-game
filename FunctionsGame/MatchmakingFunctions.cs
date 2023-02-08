@@ -414,6 +414,9 @@ namespace Kalkatos.FunctionsGame
 				newStateRegistry.UpdateHash();
 				using (Stream stream2 = stateBlob.OpenWrite(true))
 					stream2.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(newStateRegistry)));
+
+				Logger.Setup(log);
+				MatchFunctions.VerifyMatch(newMatchId);
 			}
 		}
 

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using Azure.Core;
 using Kalkatos.Network.Model;
 
 namespace Kalkatos.FunctionsGame.Registry
@@ -37,6 +38,31 @@ namespace Kalkatos.FunctionsGame.Registry
 			};
 		}
 
+		public void UpsertPublicProperty (string key, string value, string[] valuesToChange = null, string[] valuesToNotChange = null)
+		{
+			if (!PublicProperties.ContainsKey(key))
+			{
+				PublicProperties.Add(key, value);
+				UpdateHash();
+			}
+			else
+			{
+				if (valuesToChange != null)
+				{
+					if (!valuesToChange.Contains(PublicProperties[key]))
+						return;
+				}
+				if (valuesToNotChange != null)
+				{
+					if (valuesToNotChange.Contains(PublicProperties[key]))
+						return;
+				}
+				PublicProperties[key] = value;
+				UpdateHash();
+			}
+		}
+
+		// TODO Encapsulate all properties and call update hash after every change in data
 		public void UpdateHash ()
 		{
 			unchecked

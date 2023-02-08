@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Azure.Core;
 using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
 using Newtonsoft.Json;
@@ -76,21 +77,23 @@ namespace Kalkatos.FunctionsGame
 			int index = state?.Index + 1 ?? 0;
 			StateRegistry newState = state?.Clone() ?? CreateNewState(match);
 			newState.Index = index;
-			foreach (var item in request.PublicChanges)
-			{
-				if (newState.PublicProperties.ContainsKey(item.Key))
-					newState.PublicProperties[item.Key] = item.Value;
-				else
-					newState.PublicProperties.Add(item.Key, item.Value);
-			}
-			foreach (var item in request.PrivateChanges)
-			{
-				PrivateState playerState = newState.PrivateStates.Where(state => state.PlayerId == request.PlayerId).First();
-				if (playerState.Properties.ContainsKey(item.Key))
-					playerState.Properties[item.Key] = item.Value;
-				else
-					playerState.Properties.Add(item.Key, item.Value);
-			}
+			if (request.PublicChanges != null)
+				foreach (var item in request.PublicChanges)
+				{
+					if (newState.PublicProperties.ContainsKey(item.Key))
+						newState.PublicProperties[item.Key] = item.Value;
+					else
+						newState.PublicProperties.Add(item.Key, item.Value);
+				}
+			if (request.PrivateChanges != null)
+				foreach (var item in request.PrivateChanges)
+				{
+					PrivateState playerState = newState.PrivateStates.Where(state => state.PlayerId == request.PlayerId).First();
+					if (playerState.Properties.ContainsKey(item.Key))
+						playerState.Properties[item.Key] = item.Value;
+					else
+						playerState.Properties.Add(item.Key, item.Value);
+				}
 			newState.UpdateHash();
 			if (state != null && state.Hash == newState.Hash)
 				return new ActionResponse { IsError = true, Message = "Action is already registered." };
@@ -115,13 +118,14 @@ namespace Kalkatos.FunctionsGame
 				return new StateResponse { IsError = true, Message = "Match is over." };
 			if (!match.HasPlayer(request.PlayerId))
 				return new StateResponse { IsError = true, Message = "Player is not on that match." };
-			StateRegistry currentState;
-			if (!match.IsStarted)
-				currentState = await InitializeMatch(match);
-			else
-				currentState = await service.GetState(request.MatchId);
+			//StateRegistry currentState;
+			//if (!match.IsStarted)
+			//	currentState = await InitializeMatch(match);
+			//else
+			StateRegistry currentState = await service.GetState(request.MatchId);
 			if (!HasHandshakingFromAllPlayers(currentState))
 				return new StateResponse { IsError = true, Message = "Not every player is ready." };
+			await PrepareTurn(match, currentState);
 			StateInfo info = currentState.GetStateInfo(request.PlayerId);
 			if (info.Hash == request.LastHash)
 				return new StateResponse { IsError = true, Message = "Current state is the same known state." };
@@ -130,7 +134,8 @@ namespace Kalkatos.FunctionsGame
 
 		public static async Task DeleteMatch (string matchId)
 		{
-			if (matchId == null)
+			Logger.Log(" = = = = Deleting Match : " + matchId);
+			if (string.IsNullOrEmpty(matchId))
 				return;
 			await service.DeleteMatchmakingHistory(null, matchId);
 			//await service.DeleteActionHistory(matchId);
@@ -138,11 +143,35 @@ namespace Kalkatos.FunctionsGame
 			await service.DeleteMatchRegistry(matchId);
 		}
 
+		// Temp
+		public static void VerifyMatch (string matchId)
+		{
+			Logger.Log(" = = = = Verify Match");
+			var task = Task.Run(async () => await ScheduleTask(40000, async () => await DeleteMatchIfNoHandshaking(matchId)));
+		}
+
 
 		// ===========  P R I V A T E  =================
 
-		// Temporarily public
-		public static async Task<StateRegistry> InitializeMatch (MatchRegistry match)
+		private static async Task ScheduleTask (int milliseconds, Action callback)
+		{
+			Logger.Log(" = = = = ScheduleTask");
+			await Task.Delay(milliseconds);
+			Logger.Log(" = = = = ScheduleTask  Callback");
+			callback?.Invoke();
+		}
+
+		private static async Task DeleteMatchIfNoHandshaking (string matchId)
+		{
+			Logger.Log(" = = = = DeleteMatchIfNoHandshaking");
+			StateRegistry state = await service.GetState(matchId);
+			if (!HasHandshakingFromAllPlayers(state))
+			{
+				await DeleteMatch(matchId);
+			}
+		}
+
+		private static async Task<StateRegistry> InitializeMatch (MatchRegistry match)
 		{
 			match.IsStarted = true;
 			await service.SetMatchRegistry(match);
@@ -152,13 +181,35 @@ namespace Kalkatos.FunctionsGame
 			return firstState;
 		}
 
+		private static async Task PrepareTurn (MatchRegistry match, StateRegistry lastState)
+		{
+			StateRegistry newState = null;
+			if (lastState == null)
+				newState = CreateNewState(match);
+			else
+			{
+				newState = lastState.Clone();
+				newState.UpsertPublicProperty("MatchReady", "1");
+				newState.UpsertPublicProperty("TurnReady", "1");
+
+				// TODO Consult game settings to see what must be altered
+			}
+			await service.SetState(match.MatchId, newState);
+		}
+
 		private static bool HasHandshakingFromAllPlayers (StateRegistry state)
 		{
+			Logger.LogWarning($"    [HasHandshakingFromAllPlayers] Retrieving handshaking for state: {JsonConvert.SerializeObject(state)}");
 			if (state == null || state.PublicProperties == null || state.PrivateStates == null)
-				return false;
-			return state.PrivateStates.Count(item =>
+			{
+				Logger.LogWarning($"    [HasHandshakingFromAllPlayers] Returning false because something is null");
+				return false; 
+			}
+			bool hasHandshaking = state.PrivateStates.Count(item =>
 					item.Properties.ContainsKey("Handshaking")
 					&& item.Properties["Handshaking"] == "1") == state.PrivateStates.Length;
+			Logger.LogWarning($"    [HasHandshakingFromAllPlayers] Returning {hasHandshaking}");
+			return hasHandshaking;
 		}
 
 		private static StateRegistry CreateNewState (MatchRegistry match)
@@ -175,6 +226,7 @@ namespace Kalkatos.FunctionsGame
 			newRegistry.UpdateHash();
 			return newRegistry;
 		}
+
 	}
 
 	public interface IService
