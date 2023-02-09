@@ -9,11 +9,10 @@ namespace Kalkatos.FunctionsGame.Registry
         public string[] PlayerIds;
         public PlayerInfo[] PlayerInfos;
 		public string Region;
-        public bool IsStarted;
-        public bool IsEnded;
+        public int Status;
         public bool HasBots;
         public DateTime CreatedTime;
-        public DateTime LastUpdatedTime;
+        public DateTime StartTime;
         public DateTime EndedTime;
 
         public bool HasPlayer (string playerId)
@@ -23,5 +22,13 @@ namespace Kalkatos.FunctionsGame.Registry
                     return true;
             return false;
         }
+    }
+
+    public enum MatchStatus
+    {
+        AwaitingPlayers,
+        Started,
+        FailedToStart,
+        Ended
     }
 }

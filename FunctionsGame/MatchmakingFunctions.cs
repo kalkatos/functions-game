@@ -391,10 +391,8 @@ namespace Kalkatos.FunctionsGame
 					PlayerIds = playerIds,
 					Region = region,
 					HasBots = hasBots,
-					IsEnded = false,
-					IsStarted = true,
+					Status = (int)MatchStatus.AwaitingPlayers,
 					CreatedTime = DateTime.UtcNow,
-					LastUpdatedTime = DateTime.UtcNow,
 				};
 
 				BlockBlobClient blobClient = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{newMatchId}.json");
