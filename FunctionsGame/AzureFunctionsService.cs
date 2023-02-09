@@ -3,15 +3,12 @@ using System.IO;
 using System.Threading.Tasks;
 using Azure.Storage.Blobs.Specialized;
 using Newtonsoft.Json;
-using Kalkatos.Network.Model;
 using Kalkatos.FunctionsGame.Registry;
 using Azure.Data.Tables;
-using System.Linq;
-using System;
-using System.Collections.Generic;
 
 namespace Kalkatos.FunctionsGame.AzureFunctions
 {
+
 	public class AzureFunctionsService : IService
 	{
 		// Log In
@@ -99,13 +96,11 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 		}
 
 		// Action
-
 		//public async Task RegisterAction (string matchId, string playerId, Dictionary<string, string> content)
 		//{
 		//	TableClient actionsTable = new TableClient("UseDevelopmentStorage=true", "ActionHistory");
 		//	await actionsTable.UpsertEntityAsync(new PlayerActionEntity { PartitionKey = matchId, RowKey = playerId, Content = JsonConvert.SerializeObject(content) });
 		//}
-
 		//public async Task<ActionInfo[]> GetActionHistory (string matchId, string[] players, string actionName)
 		//{
 		//	await Task.Delay(1);
@@ -145,7 +140,6 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 		//	}
 		//	return actions;
 		//}
-
 		//public async Task DeleteActionHistory (string matchId)
 		//{
 		//	TableClient actionsTable = new TableClient("UseDevelopmentStorage=true", "ActionHistory");
@@ -153,7 +147,6 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 		//	foreach (var item in query)
 		//		await actionsTable.DeleteEntityAsync(item.PartitionKey, item.RowKey);
 		//}
-
 		// State
 
 		public async Task<StateRegistry> GetState (string matchId)

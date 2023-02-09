@@ -8,16 +8,41 @@ namespace Kalkatos.FunctionsGame.Registry
 	public class StateRegistry
 	{
 		public int Index;
-		public Dictionary<string, string> PublicProperties;
-		public PrivateState[] PrivateStates;
-		public int Hash;
+		public readonly Dictionary<string, string> PublicMatchProperties;
+		public readonly PlayerProperties[] PublicPlayerProperties;
+		public readonly PlayerProperties[] PrivateProperties;
+
+		private int hash;
+
+		public int Hash => hash;
+
+		public StateRegistry (string[] playerIds)
+		{
+			PublicMatchProperties = new Dictionary<string, string>();
+			PrivateProperties = new PlayerProperties[playerIds.Length];
+			PublicPlayerProperties = new PlayerProperties[playerIds.Length];
+			for (int i = 0; i < playerIds.Length; i++)
+			{
+				PrivateProperties[i] = new PlayerProperties { PlayerId = playerIds[i], Properties = new Dictionary<string, string>() };
+				PublicPlayerProperties[i] = new PlayerProperties { PlayerId = playerIds[i], Properties = new Dictionary<string, string>() };
+			}
+			UpdateHash();
+		}
+
+		public StateRegistry (PlayerProperties[] publicPlayerProperties, PlayerProperties[] privateProperties)
+		{
+			PublicMatchProperties = new Dictionary<string, string>();
+			PublicPlayerProperties = publicPlayerProperties;
+			PrivateProperties = privateProperties;
+			UpdateHash();
+		}
 
 		public StateInfo GetStateInfo (string playerId)
 		{
-			PrivateState playerPrivateState = PrivateStates.Where(item => item.PlayerId == playerId).First();
+			PlayerProperties playerPrivateState = PrivateProperties.Where(item => item.PlayerId == playerId).First();
 			StateInfo stateInfo = new StateInfo
 			{
-				PublicProperties = PublicProperties.ToDictionary(e => e.Key, e => e.Value),
+				PublicProperties = PublicMatchProperties.ToDictionary(e => e.Key, e => e.Value),
 				PrivateProperties = playerPrivateState.Properties.ToDictionary(e => e.Key, e => e.Value),
 				Hash = Hash
 			};
@@ -26,40 +51,32 @@ namespace Kalkatos.FunctionsGame.Registry
 
 		public StateRegistry Clone ()
 		{
-			PrivateState[] privateStatesClone = new PrivateState[PrivateStates.Length];
-			for (int i = 0; i < PrivateStates.Length; i++)
-				privateStatesClone[i] = PrivateStates[i].Clone();
-			return new StateRegistry
-			{
-				Index = Index,
-				PublicProperties = PublicProperties.ToDictionary(e => e.Key, e => e.Value),
-				PrivateStates = privateStatesClone,
-				Hash = Hash
-			};
+			PlayerProperties[] privatePropertiesClone = new PlayerProperties[PrivateProperties.Length];
+			for (int i = 0; i < PrivateProperties.Length; i++)
+				privatePropertiesClone[i] = PrivateProperties[i].Clone();
+			PlayerProperties[] publicPlayerPropertiesClone = new PlayerProperties[PublicPlayerProperties.Length];
+			for (int i = 0; i < PublicPlayerProperties.Length; i++)
+				publicPlayerPropertiesClone[i] = PublicPlayerProperties[i].Clone();
+			return new StateRegistry(publicPlayerPropertiesClone, privatePropertiesClone);
 		}
 
 		public void UpsertPublicProperty (string key, string value, string[] valuesToChange = null, string[] valuesToNotChange = null)
 		{
-			if (!PublicProperties.ContainsKey(key))
-			{
-				PublicProperties.Add(key, value);
-				UpdateHash();
-			}
-			else
+			if (PublicMatchProperties.ContainsKey(key))
 			{
 				if (valuesToChange != null)
 				{
-					if (!valuesToChange.Contains(PublicProperties[key]))
+					if (!valuesToChange.Contains(PublicMatchProperties[key]))
 						return;
 				}
 				if (valuesToNotChange != null)
 				{
-					if (valuesToNotChange.Contains(PublicProperties[key]))
+					if (valuesToNotChange.Contains(PublicMatchProperties[key]))
 						return;
 				}
-				PublicProperties[key] = value;
-				UpdateHash();
 			}
+			PublicMatchProperties[key] = value;
+			UpdateHash();
 		}
 
 		// TODO Encapsulate all properties and call update hash after every change in data
@@ -67,36 +84,36 @@ namespace Kalkatos.FunctionsGame.Registry
 		{
 			unchecked
 			{
-				Hash = 23;
-				foreach (var item in PublicProperties)
+				hash = 23;
+				foreach (var item in PublicMatchProperties)
 				{
 					foreach (char c in item.Key)
-						Hash = Hash * 31 + c;
+						hash = hash * 31 + c;
 					foreach (char c in item.Value)
-						Hash = Hash * 31 + c;
+						hash = hash * 31 + c;
 				}
-				foreach (var item in PrivateStates)
+				foreach (var item in PrivateProperties)
 				{
 					foreach (var playerState in item.Properties)
 					{
 						foreach (char c in playerState.Key)
-							Hash = Hash * 31 + c;
+							hash = hash * 31 + c;
 						foreach (char c in playerState.Value)
-							Hash = Hash * 31 + c;
+							hash = hash * 31 + c;
 					}
 				}
 			}
 		}
 	}
 
-	public class PrivateState
+	public class PlayerProperties
 	{
 		public string PlayerId;
 		public Dictionary<string, string> Properties;
 
-		public PrivateState Clone () 
+		public PlayerProperties Clone () 
 		{
-			return new PrivateState
+			return new PlayerProperties
 			{
 				PlayerId = PlayerId,
 				Properties = Properties.ToDictionary(e => e.Key, e => e.Value)

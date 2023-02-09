@@ -63,12 +63,7 @@ namespace Kalkatos.FunctionsGame
 			}
 
 			foreach (var item in request.Data)
-			{
-				if (registry.Info.CustomData.ContainsKey(item.Key))
-					registry.Info.CustomData[item.Key] = item.Value;
-				else
-					registry.Info.CustomData.Add(item.Key, item.Value);
-			}
+				registry.Info.CustomData[item.Key] = item.Value;
 
 			// Write back to file
 			using Stream writeStream = await playersBlob.OpenWriteAsync(true);

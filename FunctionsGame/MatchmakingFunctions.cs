@@ -208,7 +208,7 @@ namespace Kalkatos.FunctionsGame
 					{
 						PlayerId = request.PlayerId,
 						MatchId = item.MatchId,
-						PrivateChanges = new Dictionary<string, string> { { "LeaveMatch", "1" } }
+						// TODO Actually leave the match
 					}), log);
 					log.LogInformation($"   [{nameof(LeaveMatch)}] Sent action to leave match. ActionResponse = {actionResponseSerialized}");
 					return JsonConvert.SerializeObject(new MatchResponse { MatchId = item.MatchId, Message = "Sent action to leave match." });
@@ -400,16 +400,7 @@ namespace Kalkatos.FunctionsGame
 				stream.Write(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(matchInfo)));
 
 				BlockBlobClient stateBlob = new BlockBlobClient("UseDevelopmentStorage=true", "states", $"{newMatchId}.json");
-				PrivateState[] privateStates = new PrivateState[matchInfo.PlayerIds.Length];
-				for (int i = 0; i < privateStates.Length; i++)
-					privateStates[i] = new PrivateState { PlayerId = matchInfo.PlayerIds[i], Properties = new Dictionary<string, string>() };
-				StateRegistry newStateRegistry = new StateRegistry
-				{
-					Index = 0,
-					PublicProperties = new Dictionary<string, string>(),
-					PrivateStates = privateStates
-				};
-				newStateRegistry.UpdateHash();
+				StateRegistry newStateRegistry = new StateRegistry(matchInfo.PlayerIds);
 				using (Stream stream2 = stateBlob.OpenWrite(true))
 					stream2.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(newStateRegistry)));
 

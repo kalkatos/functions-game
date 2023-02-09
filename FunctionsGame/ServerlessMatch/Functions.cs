@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Azure.Core;
+using Kalkatos.FunctionsGame.Game;
 using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
 using Newtonsoft.Json;
@@ -16,6 +16,7 @@ namespace Kalkatos.FunctionsGame
 #else
 		private static IService service;
 #endif
+		private static IGame game;
 
 		// =========== Log In =================
 
@@ -70,29 +71,25 @@ namespace Kalkatos.FunctionsGame
 				return new ActionResponse { IsError = true, Message = "Player is not on that match." };
 			if (match.Status == (int)MatchStatus.Ended)
 				return new ActionResponse { IsError = true, Message = "Match is over." };
+			StateRegistry state = await service.GetState(request.MatchId);
 
 			// TODO Check with the game rules and the game state if this action is allowed
+			if (!game.IsActionAllowed(request.PlayerId, request.Changes, match, state))
+				return new ActionResponse { IsError = true, Message = "Action is not allowed." };
 
-			StateRegistry state = await service.GetState(request.MatchId);
 			int index = state?.Index + 1 ?? 0;
-			StateRegistry newState = state?.Clone() ?? CreateNewState(match);
+			StateRegistry newState = state?.Clone() ?? new StateRegistry(match.PlayerIds);
 			newState.Index = index;
-			if (request.PublicChanges != null)
-				foreach (var item in request.PublicChanges)
+			if (request.Changes.PublicProperties != null)
+				foreach (var item in request.Changes.PublicProperties)
+					newState.PublicMatchProperties[item.Key] = item.Value;
+			if (request.Changes.PrivateProperties != null)
+				foreach (var item in request.Changes.PrivateProperties)
 				{
-					if (newState.PublicProperties.ContainsKey(item.Key))
-						newState.PublicProperties[item.Key] = item.Value;
-					else
-						newState.PublicProperties.Add(item.Key, item.Value);
-				}
-			if (request.PrivateChanges != null)
-				foreach (var item in request.PrivateChanges)
-				{
-					PrivateState playerState = newState.PrivateStates.Where(state => state.PlayerId == request.PlayerId).First();
-					if (playerState.Properties.ContainsKey(item.Key))
-						playerState.Properties[item.Key] = item.Value;
-					else
-						playerState.Properties.Add(item.Key, item.Value);
+					PlayerProperties playerState = newState.PrivateProperties.Where(state => state.PlayerId == request.PlayerId).First();
+					if (playerState.Properties == null)
+						playerState.Properties = new Dictionary<string, string>();
+					playerState.Properties[item.Key] = item.Value;
 				}
 			newState.UpdateHash();
 			if (state != null && state.Hash == newState.Hash)
@@ -182,63 +179,23 @@ namespace Kalkatos.FunctionsGame
 
 		private static async Task<StateRegistry> PrepareTurn (MatchRegistry match, StateRegistry lastState)
 		{
-			if (lastState == null)
-			{
-				StateRegistry newState = CreateNewState(match);
-				return newState;
-			}
-			else
-			{
-				DateTime utcNow = DateTime.UtcNow;
-				if (lastState.PublicProperties.ContainsKey("TurnReady") && !string.IsNullOrEmpty(lastState.PublicProperties["TurnReady"]))
-				{
-					DateTime lastScheduledTurn = DateTime.Parse(lastState.PublicProperties["TurnReady"]).ToUniversalTime();
-					if ((utcNow - lastScheduledTurn).TotalSeconds < 10)
-						return lastState;
-				}
-
-				StateRegistry newState = lastState.Clone();
-				newState.UpsertPublicProperty("TurnReady", utcNow.AddSeconds(5).ToString("u"));
-
-				// TODO Consult game settings to see what must be altered
-
-				if (newState.Hash != lastState.Hash)
-				{
-					await service.SetState(match.MatchId, newState);
-					return newState;
-				}
-			}
-			return lastState;
+			StateRegistry newState = game.PrepareTurn(match, lastState);
+			if (lastState != null && newState.Hash == lastState.Hash)
+				return lastState;
+			return newState;
 		}
 
 		private static bool HasHandshakingFromAllPlayers (StateRegistry state)
 		{
-			if (state == null || state.PublicProperties == null || state.PrivateStates == null)
+			if (state == null || state.PublicMatchProperties == null || state.PrivateProperties == null)
 			{
 				Logger.LogWarning($"    [HasHandshakingFromAllPlayers] Returning false because something is null");
 				return false; 
 			}
-			bool hasHandshaking = state.PrivateStates.Count(item =>
-					item.Properties.ContainsKey("Handshaking")
-					&& !string.IsNullOrEmpty(item.Properties["Handshaking"])) == state.PrivateStates.Length;
+			bool hasHandshaking = state.PrivateProperties.Count(item => item.Properties.ContainsKey("Handshaking")
+				&& !string.IsNullOrEmpty(item.Properties["Handshaking"])) == state.PrivateProperties.Length;
 			return hasHandshaking;
 		}
-
-		private static StateRegistry CreateNewState (MatchRegistry match)
-		{
-			PrivateState[] privateStates = new PrivateState[match.PlayerIds.Length];
-			for (int i = 0; i < privateStates.Length; i++)
-				privateStates[i] = new PrivateState { PlayerId = match.PlayerIds[i], Properties = new Dictionary<string, string>() };
-			StateRegistry newRegistry = new StateRegistry
-			{
-				Index = 0,
-				PublicProperties = new Dictionary<string, string>(),
-				PrivateStates = privateStates
-			};
-			newRegistry.UpdateHash();
-			return newRegistry;
-		}
-
 	}
 
 	public interface IService
