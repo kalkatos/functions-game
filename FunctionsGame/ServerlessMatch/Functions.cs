@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Kalkatos.FunctionsGame.Game;
 using Kalkatos.FunctionsGame.Registry;
@@ -81,16 +79,9 @@ namespace Kalkatos.FunctionsGame
 			StateRegistry newState = state?.Clone() ?? new StateRegistry(match.PlayerIds);
 			newState.Index = index;
 			if (request.Changes.PublicProperties != null)
-				foreach (var item in request.Changes.PublicProperties)
-					newState.PublicMatchProperties[item.Key] = item.Value;
+				newState.UpsertPublicProperties(request.Changes.PublicProperties);
 			if (request.Changes.PrivateProperties != null)
-				foreach (var item in request.Changes.PrivateProperties)
-				{
-					PlayerProperties playerState = newState.PrivateProperties.Where(state => state.PlayerId == request.PlayerId).First();
-					if (playerState.Properties == null)
-						playerState.Properties = new Dictionary<string, string>();
-					playerState.Properties[item.Key] = item.Value;
-				}
+				newState.UpsertPrivateProperties(request.PlayerId, request.Changes.PrivateProperties);
 			newState.UpdateHash();
 			if (state != null && state.Hash == newState.Hash)
 				return new ActionResponse { IsError = true, Message = "Action is already registered." };
@@ -182,19 +173,23 @@ namespace Kalkatos.FunctionsGame
 			StateRegistry newState = game.PrepareTurn(match, lastState);
 			if (lastState != null && newState.Hash == lastState.Hash)
 				return lastState;
+			await service.SetState(match.MatchId, newState);
 			return newState;
 		}
 
 		private static bool HasHandshakingFromAllPlayers (StateRegistry state)
 		{
-			if (state == null || state.PublicMatchProperties == null || state.PrivateProperties == null)
+			if (state == null)
 			{
 				Logger.LogWarning($"    [HasHandshakingFromAllPlayers] Returning false because something is null");
 				return false; 
 			}
-			bool hasHandshaking = state.PrivateProperties.Count(item => item.Properties.ContainsKey("Handshaking")
-				&& !string.IsNullOrEmpty(item.Properties["Handshaking"])) == state.PrivateProperties.Length;
-			return hasHandshaking;
+			var players = state.GetPlayers();
+			int count = 0;
+			foreach (var player in players) 
+				if (!string.IsNullOrEmpty(state.GetPrivate(player, "Handshaking")))
+					count++;
+			return count == players.Length;
 		}
 	}
 

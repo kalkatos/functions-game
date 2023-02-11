@@ -1,49 +1,47 @@
 ﻿using System.Collections.Generic;
-using System.Linq;
-using Azure.Core;
 using Kalkatos.Network.Model;
+using Newtonsoft.Json;
 
 namespace Kalkatos.FunctionsGame.Registry
 {
 	public class StateRegistry
 	{
 		public int Index;
-		public readonly Dictionary<string, string> PublicMatchProperties;
-		public readonly PlayerProperties[] PublicPlayerProperties;
-		public readonly PlayerProperties[] PrivateProperties;
 
+		[JsonProperty] private Dictionary<string, string> publicProperties;
+		[JsonProperty] private Dictionary<string, Dictionary<string, string>> privateProperties;
 		private int hash;
 
 		public int Hash => hash;
 
 		public StateRegistry (string[] playerIds)
 		{
-			PublicMatchProperties = new Dictionary<string, string>();
-			PrivateProperties = new PlayerProperties[playerIds.Length];
-			PublicPlayerProperties = new PlayerProperties[playerIds.Length];
+			publicProperties = new Dictionary<string, string>();
+			privateProperties = new Dictionary<string, Dictionary<string, string>>();
 			for (int i = 0; i < playerIds.Length; i++)
-			{
-				PrivateProperties[i] = new PlayerProperties { PlayerId = playerIds[i], Properties = new Dictionary<string, string>() };
-				PublicPlayerProperties[i] = new PlayerProperties { PlayerId = playerIds[i], Properties = new Dictionary<string, string>() };
-			}
+				privateProperties.Add(playerIds[i], new Dictionary<string, string>());
 			UpdateHash();
 		}
 
-		public StateRegistry (PlayerProperties[] publicPlayerProperties, PlayerProperties[] privateProperties)
+		public StateRegistry (Dictionary<string, Dictionary<string, string>> privateProperties)
 		{
-			PublicMatchProperties = new Dictionary<string, string>();
-			PublicPlayerProperties = publicPlayerProperties;
-			PrivateProperties = privateProperties;
+			publicProperties = new Dictionary<string, string>();
+			this.privateProperties = privateProperties;
 			UpdateHash();
 		}
 
 		public StateInfo GetStateInfo (string playerId)
 		{
-			PlayerProperties playerPrivateState = PrivateProperties.Where(item => item.PlayerId == playerId).First();
+			Dictionary<string, string> publicPropertiesClone = new Dictionary<string, string>();
+			Dictionary<string, string> privatePropertiesClone = new Dictionary<string, string>();
+			foreach (var item in publicProperties)
+				publicPropertiesClone[item.Key] = item.Value;
+			foreach (var item in privateProperties[playerId])
+				privatePropertiesClone[item.Key] = item.Value;
 			StateInfo stateInfo = new StateInfo
 			{
-				PublicProperties = PublicMatchProperties.ToDictionary(e => e.Key, e => e.Value),
-				PrivateProperties = playerPrivateState.Properties.ToDictionary(e => e.Key, e => e.Value),
+				PublicProperties = publicPropertiesClone,
+				PrivateProperties = privatePropertiesClone,
 				Hash = Hash
 			};
 			return stateInfo;
@@ -51,31 +49,95 @@ namespace Kalkatos.FunctionsGame.Registry
 
 		public StateRegistry Clone ()
 		{
-			PlayerProperties[] privatePropertiesClone = new PlayerProperties[PrivateProperties.Length];
-			for (int i = 0; i < PrivateProperties.Length; i++)
-				privatePropertiesClone[i] = PrivateProperties[i].Clone();
-			PlayerProperties[] publicPlayerPropertiesClone = new PlayerProperties[PublicPlayerProperties.Length];
-			for (int i = 0; i < PublicPlayerProperties.Length; i++)
-				publicPlayerPropertiesClone[i] = PublicPlayerProperties[i].Clone();
-			return new StateRegistry(publicPlayerPropertiesClone, privatePropertiesClone);
+			var privatePropertiesClone = new Dictionary<string, Dictionary<string, string>>();
+			foreach (var playerProperty in privateProperties)
+			{
+				var newPlayerProperty = (id: playerProperty.Key, prop: new Dictionary<string, string>());
+				foreach (var keyAndValue in playerProperty.Value)
+					newPlayerProperty.prop.Add(keyAndValue.Key, keyAndValue.Value);
+				privatePropertiesClone.Add(newPlayerProperty.id, newPlayerProperty.prop);
+			}
+			StateRegistry newState = new StateRegistry(privatePropertiesClone);
+			newState.UpsertPublicProperties(publicProperties);
+			return newState;
 		}
 
-		public void UpsertPublicProperty (string key, string value, string[] valuesToChange = null, string[] valuesToNotChange = null)
+		public bool HasPublicProperty (string key)
+		{ 
+			return publicProperties.ContainsKey(key); 
+		}
+
+		public bool HasPrivateProperty (string id, string key)
 		{
-			if (PublicMatchProperties.ContainsKey(key))
-			{
-				if (valuesToChange != null)
-				{
-					if (!valuesToChange.Contains(PublicMatchProperties[key]))
-						return;
-				}
-				if (valuesToNotChange != null)
-				{
-					if (valuesToNotChange.Contains(PublicMatchProperties[key]))
-						return;
-				}
-			}
-			PublicMatchProperties[key] = value;
+			return privateProperties.ContainsKey(id) && privateProperties[id].ContainsKey(key);
+		}
+
+		public string GetPublic (string key)
+		{
+			if (publicProperties.ContainsKey(key))
+				return publicProperties[key];
+			return "";
+		}
+
+		public string GetPrivate (string id, string key) 
+		{
+			return privateProperties[id][key];
+		}
+
+		public string[] GetPlayers ()
+		{
+			string[] result = new string[privateProperties.Keys.Count];
+			int index = 0;
+			foreach (var item in privateProperties.Keys)
+				result[index++] = item;
+			return result;
+		}
+
+		public void UpsertPublicProperty (string key, string value)
+		{
+			publicProperties[key] = value;
+			UpdateHash();
+		}
+
+		//public void UpsertPrivateProperties (params string[] idKeyAndValue)
+		//{
+			
+		//	UpdateHash();
+		//}
+
+		public void UpsertAllPrivateProperties (params (string key, string value)[] keysAndValues)
+		{
+			foreach (var prop in privateProperties)
+				foreach (var kv in keysAndValues)
+					prop.Value[kv.key] = kv.value;
+			UpdateHash();
+		}
+
+		public void UpsertPrivateProperties (params (string id, string key, string value)[] idKeyAndValue)
+		{
+			foreach (var item in idKeyAndValue)
+				privateProperties[item.id][item.key] = item.value;
+			UpdateHash();
+		}
+
+		public void UpsertPrivateProperties (string id, Dictionary<string, string> dict)
+		{
+			foreach (var item in dict)
+				privateProperties[id][item.Key] = item.Value;
+			UpdateHash();
+		}
+
+		public void UpsertPublicProperties (params (string key, string value)[] keysAndValues)
+		{
+			foreach (var item in keysAndValues)
+				publicProperties[item.key] = item.value;
+			UpdateHash();
+		}
+
+		public void UpsertPublicProperties (Dictionary<string, string> dict)
+		{
+			foreach (var item in dict)
+				publicProperties[item.Key] = item.Value;
 			UpdateHash();
 		}
 
@@ -85,16 +147,16 @@ namespace Kalkatos.FunctionsGame.Registry
 			unchecked
 			{
 				hash = 23;
-				foreach (var item in PublicMatchProperties)
+				foreach (var item in publicProperties)
 				{
 					foreach (char c in item.Key)
 						hash = hash * 31 + c;
 					foreach (char c in item.Value)
 						hash = hash * 31 + c;
 				}
-				foreach (var item in PrivateProperties)
+				foreach (var playerProperty in privateProperties)
 				{
-					foreach (var playerState in item.Properties)
+					foreach (var playerState in playerProperty.Value)
 					{
 						foreach (char c in playerState.Key)
 							hash = hash * 31 + c;
@@ -103,21 +165,6 @@ namespace Kalkatos.FunctionsGame.Registry
 					}
 				}
 			}
-		}
-	}
-
-	public class PlayerProperties
-	{
-		public string PlayerId;
-		public Dictionary<string, string> Properties;
-
-		public PlayerProperties Clone () 
-		{
-			return new PlayerProperties
-			{
-				PlayerId = PlayerId,
-				Properties = Properties.ToDictionary(e => e.Key, e => e.Value)
-			};
 		}
 	}
 }
