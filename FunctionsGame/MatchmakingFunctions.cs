@@ -399,10 +399,11 @@ namespace Kalkatos.FunctionsGame
 				using Stream stream = blobClient.OpenWrite(true);
 				stream.Write(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(matchInfo)));
 
-				BlockBlobClient stateBlob = new BlockBlobClient("UseDevelopmentStorage=true", "states", $"{newMatchId}.json");
-				StateRegistry newStateRegistry = new StateRegistry(matchInfo.PlayerIds);
-				using (Stream stream2 = stateBlob.OpenWrite(true))
-					stream2.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(newStateRegistry)));
+				//BlockBlobClient stateBlob = new BlockBlobClient("UseDevelopmentStorage=true", "states", $"{newMatchId}.json");
+				//StateRegistry newStateRegistry = new StateRegistry(matchInfo.PlayerIds);
+				//using (Stream stream2 = stateBlob.OpenWrite(true))
+				//	stream2.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(newStateRegistry)));
+				MatchFunctions.CreateFirstState(matchInfo);
 
 				Logger.Setup(log);
 				MatchFunctions.VerifyMatch(newMatchId);

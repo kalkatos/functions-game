@@ -1,5 +1,6 @@
 ﻿using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
+using Newtonsoft.Json;
 using System;
 
 namespace Kalkatos.FunctionsGame.Game.Rps
@@ -25,8 +26,7 @@ namespace Kalkatos.FunctionsGame.Game.Rps
 			result &= stateChanges.OnlyHasThesePrivateProperties(handshakingKey, myMoveKey);
 			if (IsInPlayPhase(state))
 				result &= stateChanges.IsPrivatePropertyEqualsIfPresent(myMoveKey, allowedMoves);
-			else
-				result &= !stateChanges.HasPrivateProperty(myMoveKey);
+			Logger.LogWarning($"   [RpsGame] Checking if action is allowed: {result} ... action : {JsonConvert.SerializeObject(stateChanges)}");
 			return result;
 		}
 

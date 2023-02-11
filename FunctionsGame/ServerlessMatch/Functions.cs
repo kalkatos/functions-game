@@ -14,7 +14,7 @@ namespace Kalkatos.FunctionsGame
 #else
 		private static IService service;
 #endif
-		private static IGame game;
+		private static IGame game = new Game.Rps.RpsGame();
 
 		// =========== Log In =================
 
@@ -75,14 +75,11 @@ namespace Kalkatos.FunctionsGame
 			if (!game.IsActionAllowed(request.PlayerId, request.Changes, match, state))
 				return new ActionResponse { IsError = true, Message = "Action is not allowed." };
 
-			int index = state?.Index + 1 ?? 0;
-			StateRegistry newState = state?.Clone() ?? new StateRegistry(match.PlayerIds);
-			newState.Index = index;
+			StateRegistry newState = state?.Clone() ?? await PrepareTurn(match, null);
 			if (request.Changes.PublicProperties != null)
 				newState.UpsertPublicProperties(request.Changes.PublicProperties);
 			if (request.Changes.PrivateProperties != null)
 				newState.UpsertPrivateProperties(request.PlayerId, request.Changes.PrivateProperties);
-			newState.UpdateHash();
 			if (state != null && state.Hash == newState.Hash)
 				return new ActionResponse { IsError = true, Message = "Action is already registered." };
 
@@ -139,7 +136,13 @@ namespace Kalkatos.FunctionsGame
 		// Temp
 		public static void VerifyMatch (string matchId)
 		{
-			_ = Task.Run(async () => await ScheduleTask(45000, async () => await DeleteMatchIfNoHandshaking(matchId)));
+			//_ = Task.Run(async () => await ScheduleTask(45000, async () => await DeleteMatchIfNoHandshaking(matchId)));
+		}
+
+		// Temp
+		public static void CreateFirstState (MatchRegistry match)
+		{
+			_ = Task.Run(async () => await PrepareTurn(match, null));
 		}
 
 		// ===========  P R I V A T E  =================

@@ -14,18 +14,21 @@ namespace Kalkatos.FunctionsGame.Registry
 
 		public int Hash => hash;
 
-		public StateRegistry (string[] playerIds)
+		public StateRegistry ()
 		{
 			publicProperties = new Dictionary<string, string>();
 			privateProperties = new Dictionary<string, Dictionary<string, string>>();
+		}
+
+		public StateRegistry (string[] playerIds) : this ()
+		{
 			for (int i = 0; i < playerIds.Length; i++)
 				privateProperties.Add(playerIds[i], new Dictionary<string, string>());
 			UpdateHash();
 		}
 
-		public StateRegistry (Dictionary<string, Dictionary<string, string>> privateProperties)
+		public StateRegistry (Dictionary<string, Dictionary<string, string>> privateProperties) : this ()
 		{
-			publicProperties = new Dictionary<string, string>();
 			this.privateProperties = privateProperties;
 			UpdateHash();
 		}
@@ -81,7 +84,9 @@ namespace Kalkatos.FunctionsGame.Registry
 
 		public string GetPrivate (string id, string key) 
 		{
-			return privateProperties[id][key];
+			if (privateProperties.ContainsKey(id) && privateProperties[id].ContainsKey(key))
+				return privateProperties[id][key];
+			return "";
 		}
 
 		public string[] GetPlayers ()
