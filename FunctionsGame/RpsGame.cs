@@ -26,7 +26,6 @@ namespace Kalkatos.FunctionsGame.Game.Rps
 			result &= stateChanges.OnlyHasThesePrivateProperties(handshakingKey, myMoveKey);
 			if (IsInPlayPhase(state))
 				result &= stateChanges.IsPrivatePropertyEqualsIfPresent(myMoveKey, allowedMoves);
-			Logger.LogWarning($"   [RpsGame] Checking if action is allowed: {result} ... action : {JsonConvert.SerializeObject(stateChanges)}");
 			return result;
 		}
 
@@ -62,8 +61,11 @@ namespace Kalkatos.FunctionsGame.Game.Rps
 							return lastState;
 						isNewMatch = false;
 						break;
+					case (int)Phase.Ended:
+
+						break;
 					default:
-						Logger.LogError("Unknown value of phase");
+						Logger.LogError("   [RPS] Unknown value of phase");
 						break;
 				}
 			}
@@ -71,14 +73,23 @@ namespace Kalkatos.FunctionsGame.Game.Rps
 				newState = new StateRegistry(match.PlayerIds);
 			// New turn
 			if (isNewMatch)
+			{
 				newState.UpsertAllPrivateProperties((myMoveKey, ""), (opponentMoveKey, ""), (winnerKey, ""), (myScoreKey, "0"), (opponentScoreKey, "0"));
+				newState.UpsertPublicProperties(
+					(playPhaseStartTimeKey, DateTime.UtcNow.AddSeconds(30).ToString("u")),
+					(playPhaseEndTimeKey, DateTime.UtcNow.AddSeconds(40).ToString("u")),
+					(turnEndTimeKey, DateTime.UtcNow.AddSeconds(47).ToString("u")),
+					(phaseKey, ((int)Phase.Sync).ToString()));
+			}
 			else
+			{
 				newState.UpsertAllPrivateProperties((myMoveKey, ""), (opponentMoveKey, ""), (winnerKey, ""));
-			newState.UpsertPublicProperties(
-				(playPhaseStartTimeKey, DateTime.UtcNow.AddSeconds(5).ToString("u")),
-				(playPhaseEndTimeKey, DateTime.UtcNow.AddSeconds(15).ToString("u")),
-				(turnEndTimeKey, DateTime.UtcNow.AddSeconds(22).ToString("u")),
-				(phaseKey, ((int)Phase.Sync).ToString()));
+				newState.UpsertPublicProperties(
+					(playPhaseStartTimeKey, DateTime.UtcNow.AddSeconds(5).ToString("u")),
+					(playPhaseEndTimeKey, DateTime.UtcNow.AddSeconds(15).ToString("u")),
+					(turnEndTimeKey, DateTime.UtcNow.AddSeconds(22).ToString("u")),
+					(phaseKey, ((int)Phase.Sync).ToString()));
+			}
 			return newState;
 		}
 
@@ -120,13 +131,17 @@ namespace Kalkatos.FunctionsGame.Game.Rps
 				switch (move1)
 				{
 					case "ROCK":
-						switch (move2) { case "ROCK": return 0; case "PAPER": return 1; case "SCISSORS": return -1; }
+						switch (move2) { case "ROCK": return 0; case "PAPER": return 1; case "SCISSORS": case "": return -1; }
 						break;
 					case "PAPER":
-						switch (move2) { case "ROCK": return -1; case "PAPER": return 0; case "SCISSORS": return 1; } 
+						switch (move2) { case "ROCK": case "": return -1; case "PAPER": return 0; case "SCISSORS": return 1; }
 						break;
 					case "SCISSORS":
-						switch (move2) { case "ROCK": return 1; case "PAPER": return -1; case "SCISSORS": return 0; } 
+						switch (move2) { case "ROCK": return 1; case "PAPER": case "": return -1; case "SCISSORS": return 0; }
+						break;
+					case "":
+						if (move2 != "") 
+							return 1;
 						break;
 				}
 				return 0;
@@ -137,7 +152,8 @@ namespace Kalkatos.FunctionsGame.Game.Rps
 		{
 			Sync,
 			Play,
-			Result
+			Result,
+			Ended,
 		}
 	}
 }

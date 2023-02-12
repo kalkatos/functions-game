@@ -70,11 +70,8 @@ namespace Kalkatos.FunctionsGame
 			if (match.Status == (int)MatchStatus.Ended)
 				return new ActionResponse { IsError = true, Message = "Match is over." };
 			StateRegistry state = await service.GetState(request.MatchId);
-
-			// TODO Check with the game rules and the game state if this action is allowed
 			if (!game.IsActionAllowed(request.PlayerId, request.Changes, match, state))
 				return new ActionResponse { IsError = true, Message = "Action is not allowed." };
-
 			StateRegistry newState = state?.Clone() ?? await PrepareTurn(match, null);
 			if (request.Changes.PublicProperties != null)
 				newState.UpsertPublicProperties(request.Changes.PublicProperties);
@@ -82,10 +79,6 @@ namespace Kalkatos.FunctionsGame
 				newState.UpsertPrivateProperties(request.PlayerId, request.Changes.PrivateProperties);
 			if (state != null && state.Hash == newState.Hash)
 				return new ActionResponse { IsError = true, Message = "Action is already registered." };
-
-			// DEBUG
-			Logger.LogWarning($"   [SendAction] Setting state: {JsonConvert.SerializeObject(newState)}");
-			
 			await service.SetState(request.MatchId, newState);
 			return new ActionResponse { AlteredState = newState.GetStateInfo(request.PlayerId) };
 		}
@@ -125,7 +118,7 @@ namespace Kalkatos.FunctionsGame
 
 		public static async Task DeleteMatch (string matchId)
 		{
-			Logger.Log("   [DeleteMatch] Deleting Match : " + matchId);
+			Logger.Log("   [DeleteMatch] " + matchId);
 			if (string.IsNullOrEmpty(matchId))
 				return;
 			await service.DeleteMatchmakingHistory(null, matchId);
@@ -136,7 +129,7 @@ namespace Kalkatos.FunctionsGame
 		// Temp
 		public static void VerifyMatch (string matchId)
 		{
-			//_ = Task.Run(async () => await ScheduleTask(45000, async () => await DeleteMatchIfNoHandshaking(matchId)));
+			_ = Task.Run(async () => await ScheduleTask(45000, async () => await DeleteMatchIfNoHandshaking(matchId)));
 		}
 
 		// Temp
@@ -166,7 +159,6 @@ namespace Kalkatos.FunctionsGame
 		{
 			match.Status = (int)MatchStatus.Started;
 			match.StartTime = DateTime.UtcNow;
-			Logger.LogWarning($"   [StartMatch] Match started at {DateTime.UtcNow.ToString("HH:mm:ss")}");
 			await service.SetMatchRegistry(match);
 			return await PrepareTurn(match, lastState);
 		}
@@ -183,10 +175,7 @@ namespace Kalkatos.FunctionsGame
 		private static bool HasHandshakingFromAllPlayers (StateRegistry state)
 		{
 			if (state == null)
-			{
-				Logger.LogWarning($"    [HasHandshakingFromAllPlayers] Returning false because something is null");
 				return false; 
-			}
 			var players = state.GetPlayers();
 			int count = 0;
 			foreach (var player in players) 
