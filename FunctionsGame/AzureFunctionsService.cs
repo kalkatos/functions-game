@@ -5,12 +5,23 @@ using Azure.Storage.Blobs.Specialized;
 using Newtonsoft.Json;
 using Kalkatos.FunctionsGame.Registry;
 using Azure.Data.Tables;
+using System.Collections.Generic;
+using static Microsoft.ApplicationInsights.MetricDimensionNames.TelemetryContext;
 
 namespace Kalkatos.FunctionsGame.AzureFunctions
 {
 
 	public class AzureFunctionsService : IService
 	{
+		// Game
+
+		public async Task<Dictionary<string, string>> GetGameConfig (string gameId)
+		{
+			BlockBlobClient identifierFile = new BlockBlobClient("UseDevelopmentStorage=true", "games", $"{gameId}.json");
+			using (Stream stream = await identifierFile.OpenReadAsync())
+				return JsonConvert.DeserializeObject<Dictionary<string, string>>(Helper.ReadBytes(stream));
+		}
+
 		// Log In
 
 		public async Task<bool> IsRegisteredDevice (string deviceId)

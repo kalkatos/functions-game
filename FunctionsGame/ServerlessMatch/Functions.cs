@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Kalkatos.FunctionsGame.Game;
 using Kalkatos.FunctionsGame.Registry;
@@ -165,6 +166,8 @@ namespace Kalkatos.FunctionsGame
 
 		private static async Task<StateRegistry> PrepareTurn (MatchRegistry match, StateRegistry lastState)
 		{
+			if (lastState == null)
+				game.SetConfig(await service.GetGameConfig(game.GameId));
 			StateRegistry newState = game.PrepareTurn(match, lastState);
 			if (lastState != null && newState.Hash == lastState.Hash)
 				return lastState;
@@ -187,6 +190,9 @@ namespace Kalkatos.FunctionsGame
 
 	public interface IService
 	{
+		// Game
+		Task<Dictionary<string, string>> GetGameConfig (string gameId);
+
 		// Log in
 		Task<bool> IsRegisteredDevice (string deviceId);
 		Task<string> GetPlayerId (string deviceId);
