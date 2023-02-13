@@ -162,8 +162,21 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 		public async Task SetState (string matchId, StateRegistry state)
 		{
 			BlockBlobClient stateBlob = new BlockBlobClient("UseDevelopmentStorage=true", "states", $"{matchId}.json");
-			using (Stream stream = await stateBlob.OpenWriteAsync(true))
-				stream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(state)));
+			bool stateSetSuccessfully = false;
+			while (!stateSetSuccessfully)
+			{
+				try
+				{
+					using (Stream stream = await stateBlob.OpenWriteAsync(true))
+						stream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(state)));
+					stateSetSuccessfully = true;
+				}
+				catch
+				{
+					Logger.Log("   [SetState] Retrying set");
+					await Task.Delay(100);
+				}
+			}
 		}
 
 		public async Task DeleteState (string matchId)
