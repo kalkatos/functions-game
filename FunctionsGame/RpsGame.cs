@@ -1,14 +1,35 @@
 ﻿using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
-using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
 
 namespace Kalkatos.FunctionsGame.Game.Rps
 {
 	public class RpsGame : IGame
 	{
 		private readonly string[] allowedMoves = new string[] { "ROCK", "PAPER", "SCISSORS" };
+		private int firstTurnDelay = 30;
+		private int playPhaseStartDelay = 5;
+		private int turnDuration = 10;
+		private int endTurnDelay = 7;
+		private int targetVictoryPoints = 2;
 
+		// Config Keys
+		private const string firstTurnDelayKey = "FirstTurnDelay";
+		private const string playPhaseStartDelayKey = "PlayPhaseStartDelay";
+		private const string turnDurationKey = "TurnDuration";
+		private const string endTurnDelayKey = "EndTurnDelay";
+		private const string targetVictoryPointsKey = "TargetVictoryPoints";
+		/*
+		{
+			"FirstTurnDelay":"30",
+			"PlayPhaseStartDelay":"5",
+			"TurnDuration":"10",
+			"EndTurnDelay":"7",
+			"TargetVictoryPoints":"2"
+		}
+		*/
+		// Game Keys
 		private const string phaseKey = "Phase";
 		private const string handshakingKey = "Handshaking";
 		private const string myMoveKey = "MyMove";
@@ -19,6 +40,22 @@ namespace Kalkatos.FunctionsGame.Game.Rps
 		private const string winnerKey = "Winner";
 		private const string myScoreKey = "MyScore";
 		private const string opponentScoreKey = "OpponentScore";
+
+		public string GameId { get => "rps"; set { } }
+
+		public void SetConfig (Dictionary<string, string> config)
+		{
+			if (config.ContainsKey(firstTurnDelayKey))
+				firstTurnDelay = int.Parse(config[firstTurnDelayKey]);
+			if (config.ContainsKey(playPhaseStartDelayKey))
+				playPhaseStartDelay = int.Parse(config[playPhaseStartDelayKey]);
+			if (config.ContainsKey(turnDurationKey))
+				turnDuration = int.Parse(config[turnDurationKey]);
+			if (config.ContainsKey(endTurnDelayKey))
+				endTurnDelay = int.Parse(config[endTurnDelayKey]);
+			if (config.ContainsKey(targetVictoryPointsKey))
+				targetVictoryPoints = int.Parse(config[targetVictoryPointsKey]);
+		}
 
 		public bool IsActionAllowed (string playerId, StateInfo stateChanges, MatchRegistry match, StateRegistry state)
 		{
@@ -50,7 +87,7 @@ namespace Kalkatos.FunctionsGame.Game.Rps
 						if (utcNow >= playStartTime)
 							newState.UpsertPublicProperties(
 								(phaseKey, ((int)Phase.Play).ToString()),
-								(playPhaseEndTimeKey, utcNow.AddSeconds(10).ToString("u")));
+								(playPhaseEndTimeKey, utcNow.AddSeconds(turnDuration).ToString("u")));
 						return newState;
 					case (int)Phase.Play:
 						if (utcNow >= playEndTime)
@@ -76,18 +113,18 @@ namespace Kalkatos.FunctionsGame.Game.Rps
 			{
 				newState.UpsertAllPrivateProperties((myMoveKey, ""), (opponentMoveKey, ""), (winnerKey, ""), (myScoreKey, "0"), (opponentScoreKey, "0"));
 				newState.UpsertPublicProperties(
-					(playPhaseStartTimeKey, DateTime.UtcNow.AddSeconds(30).ToString("u")),
-					(playPhaseEndTimeKey, DateTime.UtcNow.AddSeconds(40).ToString("u")),
-					(turnEndTimeKey, DateTime.UtcNow.AddSeconds(47).ToString("u")),
+					(playPhaseStartTimeKey, DateTime.UtcNow.AddSeconds(firstTurnDelay).ToString("u")),
+					(playPhaseEndTimeKey, DateTime.UtcNow.AddSeconds(firstTurnDelay + turnDuration).ToString("u")),
+					(turnEndTimeKey, DateTime.UtcNow.AddSeconds(firstTurnDelay + turnDuration + endTurnDelay).ToString("u")),
 					(phaseKey, ((int)Phase.Sync).ToString()));
 			}
 			else
 			{
 				newState.UpsertAllPrivateProperties((myMoveKey, ""), (opponentMoveKey, ""), (winnerKey, ""));
 				newState.UpsertPublicProperties(
-					(playPhaseStartTimeKey, DateTime.UtcNow.AddSeconds(5).ToString("u")),
-					(playPhaseEndTimeKey, DateTime.UtcNow.AddSeconds(15).ToString("u")),
-					(turnEndTimeKey, DateTime.UtcNow.AddSeconds(22).ToString("u")),
+					(playPhaseStartTimeKey, DateTime.UtcNow.AddSeconds(playPhaseStartDelay).ToString("u")),
+					(playPhaseEndTimeKey, DateTime.UtcNow.AddSeconds(playPhaseStartDelay + turnDuration).ToString("u")),
+					(turnEndTimeKey, DateTime.UtcNow.AddSeconds(playPhaseStartDelay + turnDuration + endTurnDelay).ToString("u")),
 					(phaseKey, ((int)Phase.Sync).ToString()));
 			}
 			return newState;
@@ -124,7 +161,7 @@ namespace Kalkatos.FunctionsGame.Game.Rps
 				(playerList[1], opponentScoreKey, p1Score.ToString()));
 			state.UpsertPublicProperties(
 				(phaseKey, ((int)Phase.Result).ToString()),
-				(turnEndTimeKey, DateTime.UtcNow.AddSeconds(7).ToString("u")));
+				(turnEndTimeKey, DateTime.UtcNow.AddSeconds(endTurnDelay).ToString("u")));
 
 			int GetWinner (string move1, string move2)
 			{
