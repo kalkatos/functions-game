@@ -6,7 +6,7 @@ namespace Kalkatos.FunctionsGame.Game
 {
 	public interface IGame
 	{
-		string GameId { get; set; }
+		string GameId { get; }
 		void SetConfig (Dictionary<string, string> config); 
 		bool IsActionAllowed (string playerId, StateInfo stateChanges, MatchRegistry match, StateRegistry state);
 		StateRegistry PrepareTurn (MatchRegistry match, StateRegistry lastState);
