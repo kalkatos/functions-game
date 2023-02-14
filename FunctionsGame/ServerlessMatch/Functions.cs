@@ -182,7 +182,7 @@ namespace Kalkatos.FunctionsGame
 			var players = state.GetPlayers();
 			int count = 0;
 			foreach (var player in players) 
-				if (!string.IsNullOrEmpty(state.GetPrivate(player, "Handshaking")))
+				if (player[0] == 'X' || !string.IsNullOrEmpty(state.GetPrivate(player, "Handshaking")))
 					count++;
 			return count == players.Length;
 		}

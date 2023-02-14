@@ -330,7 +330,7 @@ namespace Kalkatos.FunctionsGame
 					for (int i = 0; i < numberOfBots; i++)
 					{
 						// Add bot entry to the matchmaking table
-						string botId = Guid.NewGuid().ToString();
+						string botId = "X" + Guid.NewGuid().ToString();
 						string botAlias = Guid.NewGuid().ToString();
 						PlayerInfo botInfo = new PlayerInfo
 						{

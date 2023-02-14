@@ -1,6 +1,6 @@
-﻿using Kalkatos.FunctionsGame.Registry;
+﻿using System;
+using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
-using System;
 using System.Collections.Generic;
 
 namespace Kalkatos.FunctionsGame.Game.Rps
@@ -13,6 +13,7 @@ namespace Kalkatos.FunctionsGame.Game.Rps
 		private int turnDuration = 10;
 		private int endTurnDelay = 7;
 		private int targetVictoryPoints = 2;
+		private Random rand = new Random();
 
 		// Config Keys
 		private const string firstTurnDelayKey = "FirstTurnDelay";
@@ -91,7 +92,10 @@ namespace Kalkatos.FunctionsGame.Game.Rps
 						return newState;
 					case (int)Phase.Play:
 						if (utcNow >= playEndTime)
+						{
+							ApplyBotMoves(match, newState);
 							CheckRpsLogic(newState);
+						}
 						return newState;
 					case (int)Phase.Result:
 						if (utcNow < turnEndTime)
@@ -183,6 +187,20 @@ namespace Kalkatos.FunctionsGame.Game.Rps
 				}
 				return 0;
 			}
+		}
+
+		private void ApplyBotMoves (MatchRegistry match, StateRegistry lastState)
+		{
+			if (!match.HasBots)
+				return;
+
+			foreach (string id in match.PlayerIds)
+			{
+				if (id[0] == 'X')
+					lastState.UpsertPrivateProperties((id, myMoveKey, GetBotMove()));
+			}
+
+			string GetBotMove () => allowedMoves[rand.Next(0, allowedMoves.Length)];
 		}
 
 		private enum Phase
