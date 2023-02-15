@@ -3,7 +3,7 @@ using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
 using System.Collections.Generic;
 
-namespace Kalkatos.FunctionsGame.Game.Rps
+namespace Kalkatos.FunctionsGame.Rps
 {
 	public class RpsGame : IGame
 	{

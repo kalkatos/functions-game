@@ -2,7 +2,7 @@
 using Kalkatos.Network.Model;
 using System.Collections.Generic;
 
-namespace Kalkatos.FunctionsGame.Game
+namespace Kalkatos.FunctionsGame
 {
 	public interface IGame
 	{
