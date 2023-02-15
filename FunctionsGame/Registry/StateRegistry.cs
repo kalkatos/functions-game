@@ -6,8 +6,6 @@ namespace Kalkatos.FunctionsGame.Registry
 {
 	public class StateRegistry
 	{
-		public int Index;
-
 		[JsonProperty] private Dictionary<string, string> publicProperties;
 		[JsonProperty] private Dictionary<string, Dictionary<string, string>> privateProperties;
 		private int hash;
@@ -104,12 +102,6 @@ namespace Kalkatos.FunctionsGame.Registry
 			UpdateHash();
 		}
 
-		//public void UpsertPrivateProperties (params string[] idKeyAndValue)
-		//{
-			
-		//	UpdateHash();
-		//}
-
 		public void UpsertAllPrivateProperties (params (string key, string value)[] keysAndValues)
 		{
 			foreach (var prop in privateProperties)
@@ -146,7 +138,6 @@ namespace Kalkatos.FunctionsGame.Registry
 			UpdateHash();
 		}
 
-		// TODO Encapsulate all properties and call update hash after every change in data
 		public void UpdateHash ()
 		{
 			unchecked

@@ -14,6 +14,8 @@ namespace Kalkatos.FunctionsGame.Game.Rps
 		private int endTurnDelay = 7;
 		private int targetVictoryPoints = 2;
 		private Random rand = new Random();
+		private const string humanMoves = "SPPRRSSPRSPRPSPRSRPSRPRPSPPRPSPSPRPSPRPSPSRPPSPRPSPSPSRPSRPSRPSRPSRPSPRPRPSPSRPSPRSRPSRPSRPSPPRSPRSRPSPRPRPRPSPRPSPRSPRPSRP";
+		private int currentMove = -1;
 
 		// Config Keys
 		private const string firstTurnDelayKey = "FirstTurnDelay";
@@ -200,7 +202,19 @@ namespace Kalkatos.FunctionsGame.Game.Rps
 					lastState.UpsertPrivateProperties((id, myMoveKey, GetBotMove()));
 			}
 
-			string GetBotMove () => allowedMoves[rand.Next(0, allowedMoves.Length)];
+			string GetBotMove ()
+			{
+				//allowedMoves[rand.Next(0, allowedMoves.Length)];
+				if (currentMove < 0)
+					currentMove = rand.Next(0, humanMoves.Length);
+				char move = humanMoves[currentMove];
+				currentMove = (currentMove + 1) % humanMoves.Length;
+				if (move == 'R')
+					return "ROCK";
+				if (move == 'P')
+					return "PAPER";
+				return "SCISSORS";
+			}
 		}
 
 		private enum Phase

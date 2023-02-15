@@ -104,12 +104,18 @@ namespace Kalkatos.FunctionsGame
 			{
 				case (int)MatchStatus.AwaitingPlayers:
 					await StartMatch(match, currentState);
+
+					Logger.Log("   [GetMatchState] " + JsonConvert.SerializeObject(currentState));
+
 					return new StateResponse { StateInfo = currentState.GetStateInfo(request.PlayerId) };
 				case (int)MatchStatus.Started:
 					currentState = await PrepareTurn(match, currentState);
 					StateInfo info = currentState.GetStateInfo(request.PlayerId);
 					if (info.Hash == request.LastHash)
 						return new StateResponse { IsError = true, Message = "Current state is the same known state." };
+
+					Logger.Log("   [GetMatchState] " + JsonConvert.SerializeObject(currentState));
+
 					return new StateResponse { StateInfo = info };
 				case (int)MatchStatus.Ended:
 					return new StateResponse { IsError = true, Message = "Match is over." };
@@ -130,7 +136,7 @@ namespace Kalkatos.FunctionsGame
 		// Temp
 		public static void VerifyMatch (string matchId)
 		{
-			_ = Task.Run(async () => await ScheduleTask(45000, async () => await DeleteMatchIfNoHandshaking(matchId)));
+			_ = Task.Run(async () => { await service.ScheduleCheckMatch(45000, matchId, 0); });
 		}
 
 		// Temp
@@ -139,22 +145,18 @@ namespace Kalkatos.FunctionsGame
 			_ = Task.Run(async () => await PrepareTurn(match, null));
 		}
 
-		// ===========  P R I V A T E  =================
-
-		private static async Task ScheduleTask (int milliseconds, Action callback)
-		{
-			await Task.Delay(milliseconds);
-			callback?.Invoke();
-		}
-
-		private static async Task DeleteMatchIfNoHandshaking (string matchId)
+		public static async Task CheckMatch (string matchId, int lastHash)
 		{
 			StateRegistry state = await service.GetState(matchId);
-			if (!HasHandshakingFromAllPlayers(state))
-			{
+			if (state == null)
+				return;
+			if (!HasHandshakingFromAllPlayers(state) || state.Hash == lastHash)
 				await DeleteMatch(matchId);
-			}
+			else
+				await service.ScheduleCheckMatch(60000, matchId, state.Hash);
 		}
+
+		// ===========  P R I V A T E  =================
 
 		private static async Task<StateRegistry> StartMatch (MatchRegistry match, StateRegistry lastState)
 		{
@@ -178,10 +180,10 @@ namespace Kalkatos.FunctionsGame
 		private static bool HasHandshakingFromAllPlayers (StateRegistry state)
 		{
 			if (state == null)
-				return false; 
+				return false;
 			var players = state.GetPlayers();
 			int count = 0;
-			foreach (var player in players) 
+			foreach (var player in players)
 				if (player[0] == 'X' || !string.IsNullOrEmpty(state.GetPrivate(player, "Handshaking")))
 					count++;
 			return count == players.Length;
@@ -218,5 +220,8 @@ namespace Kalkatos.FunctionsGame
 		Task<StateRegistry> GetState (string matchId);
 		Task SetState (string matchId, StateRegistry state);
 		Task DeleteState (string matchId);
+
+		// General
+		Task ScheduleCheckMatch (int millisecondsDelay, string matchId, int lastHash);
 	}
 }

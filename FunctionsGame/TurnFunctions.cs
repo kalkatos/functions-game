@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Azure;
 using Azure.Data.Tables;
@@ -238,6 +239,21 @@ namespace Kalkatos.FunctionsGame
 			// TODO Delete State History
 
 			// TODO Delete bots bound to that match
+		}
+
+		[FunctionName(nameof(CheckMatch))]
+		public static async Task CheckMatch (
+			[QueueTrigger("check-match", Connection = "AzureWebJobsStorage")] string message,
+			ILogger log)
+		{
+			Logger.Setup(log);
+			log.LogWarning($"   [{nameof(CheckMatch)}] Checking match from queue with message: {message}");
+
+			string[] messageSplit = message.Split('|');
+			string matchId = messageSplit[0];
+			int lastHash = int.Parse(messageSplit[1]);
+
+			await MatchFunctions.CheckMatch(matchId, lastHash);
 		}
 	}
 

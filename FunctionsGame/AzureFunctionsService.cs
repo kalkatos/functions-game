@@ -6,8 +6,8 @@ using Newtonsoft.Json;
 using Kalkatos.FunctionsGame.Registry;
 using Azure.Data.Tables;
 using System.Collections.Generic;
-using static Microsoft.ApplicationInsights.MetricDimensionNames.TelemetryContext;
 using System;
+using Azure.Storage.Queues;
 
 namespace Kalkatos.FunctionsGame.AzureFunctions
 {
@@ -168,6 +168,7 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 			if (await stateBlob.ExistsAsync())
 				using (Stream stream = await stateBlob.OpenReadAsync())
 					state = JsonConvert.DeserializeObject<StateRegistry>(Helper.ReadBytes(stream));
+			state?.UpdateHash();
 			return state;
 		}
 
@@ -196,6 +197,14 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 			BlockBlobClient statesBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "states", $"{matchId}.json");
 			if (await statesBlob.ExistsAsync())
 				await statesBlob.DeleteAsync();
+		}
+
+		public async Task ScheduleCheckMatch (int millisecondsDelay, string matchId, int lastHash)
+		{
+			QueueClient checkMatchQueue = new QueueClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "check-match");
+			string message = $"{matchId}|{lastHash}";
+			var bytes = Encoding.UTF8.GetBytes(message);
+			await checkMatchQueue.SendMessageAsync(Convert.ToBase64String(bytes), TimeSpan.FromMilliseconds(millisecondsDelay));
 		}
 	}
 }
