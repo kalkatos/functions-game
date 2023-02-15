@@ -9,6 +9,7 @@ using Azure.Storage.Blobs.Specialized;
 using Newtonsoft.Json;
 using Kalkatos.Network.Model;
 using Kalkatos.FunctionsGame.Registry;
+using System;
 
 namespace Kalkatos.FunctionsGame
 {
@@ -46,7 +47,7 @@ namespace Kalkatos.FunctionsGame
 				return JsonConvert.SerializeObject(new NetworkError { Tag = NetworkErrorTag.WrongParameters, Message = "Request Data is null or empty." });
 
 			// Get file
-			BlockBlobClient playersBlob = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{request.PlayerId}.json");
+			BlockBlobClient playersBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{request.PlayerId}.json");
 			if (!await playersBlob.ExistsAsync())
 				return JsonConvert.SerializeObject(new NetworkError { Tag = NetworkErrorTag.NotFound, Message = "Player not found." });
 

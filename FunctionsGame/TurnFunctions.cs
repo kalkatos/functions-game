@@ -31,7 +31,7 @@ namespace Kalkatos.FunctionsGame
 		//	log.LogInformation($"   [{nameof(StartMatch)}] Match info got === {matchRegistrySerialized}");
 		//	MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(matchRegistrySerialized);
 		//	//await durableFunctionsClient.StartNewAsync(nameof(TurnOrchestrator), match.MatchId, new TurnOrchestratorInfo { Match = match });
-		//	QueueClient queueClient = new QueueClient("UseDevelopmentStorage=true", "match-deletion");
+		//	QueueClient queueClient = new QueueClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "match-deletion");
 		//	await queueClient.SendMessageAsync(Convert.ToBase64String(Encoding.UTF8.GetBytes(match.MatchId)), TimeSpan.FromSeconds(30));
 		//}
 
@@ -93,7 +93,7 @@ namespace Kalkatos.FunctionsGame
 			//}
 
 			//// Check if player is in the match
-			//BlockBlobClient matchesBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{request.MatchId}.json");
+			//BlockBlobClient matchesBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "matches", $"{request.MatchId}.json");
 			//if (await matchesBlob.ExistsAsync())
 			//{
 			//	using (Stream stream = await matchesBlob.OpenReadAsync())
@@ -107,7 +107,7 @@ namespace Kalkatos.FunctionsGame
 			//	return JsonConvert.SerializeObject(new ActionResponse { IsError = true, Message = "Match does not exist." });
 
 			//// Open action table
-			//TableClient actionTable = new TableClient("UseDevelopmentStorage=true", "ActionHistory");
+			//TableClient actionTable = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "ActionHistory");
 
 			//bool isActionDefined = false;
 
@@ -219,7 +219,7 @@ namespace Kalkatos.FunctionsGame
 			log.LogWarning($"   [{nameof(DeleteMatch)}] Deleting {match.MatchId}");
 
 			// Delete match blob file
-			BlockBlobClient matchesBlobClient = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{match.MatchId}.json");
+			BlockBlobClient matchesBlobClient = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "matches", $"{match.MatchId}.json");
 			if (matchesBlobClient.Exists())
 				matchesBlobClient.Delete();
 

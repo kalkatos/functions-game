@@ -7,6 +7,7 @@ using Kalkatos.FunctionsGame.Registry;
 using Azure.Data.Tables;
 using System.Collections.Generic;
 using static Microsoft.ApplicationInsights.MetricDimensionNames.TelemetryContext;
+using System;
 
 namespace Kalkatos.FunctionsGame.AzureFunctions
 {
@@ -17,7 +18,7 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 
 		public async Task<Dictionary<string, string>> GetGameConfig (string gameId)
 		{
-			BlockBlobClient identifierFile = new BlockBlobClient("UseDevelopmentStorage=true", "games", $"{gameId}.json");
+			BlockBlobClient identifierFile = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "games", $"{gameId}.json");
 			using (Stream stream = await identifierFile.OpenReadAsync())
 				return JsonConvert.DeserializeObject<Dictionary<string, string>>(Helper.ReadBytes(stream));
 		}
@@ -26,41 +27,41 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 
 		public async Task<bool> IsRegisteredDevice (string deviceId)
 		{
-			BlockBlobClient identifierFile = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{deviceId}");
+			BlockBlobClient identifierFile = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{deviceId}");
 			return await identifierFile.ExistsAsync();
 		}
 
 		public async Task<string> GetPlayerId (string deviceId)
 		{
-			BlockBlobClient identifierFile = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{deviceId}");
+			BlockBlobClient identifierFile = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{deviceId}");
 			using (Stream stream = await identifierFile.OpenReadAsync())
 				return Helper.ReadBytes(stream);
 		}
 
 		public async Task RegisterDeviceWithId (string deviceId, string playerId)
 		{
-			BlockBlobClient identifierFile = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{deviceId}");
+			BlockBlobClient identifierFile = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{deviceId}");
 			using (Stream stream = await identifierFile.OpenWriteAsync(true))
 				stream.Write(Encoding.ASCII.GetBytes(playerId));
 		}
 
 		public async Task<PlayerRegistry> GetPlayerRegistry (string playerId)
 		{
-			BlockBlobClient playerBlob = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{playerId}.json");
+			BlockBlobClient playerBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{playerId}.json");
 			using (Stream stream = await playerBlob.OpenReadAsync())
 				return JsonConvert.DeserializeObject<PlayerRegistry>(Helper.ReadBytes(stream));
 		}
 
 		public async Task SetPlayerRegistry (PlayerRegistry registry)
 		{
-			BlockBlobClient playerBlob = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{registry.PlayerId}.json");
+			BlockBlobClient playerBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{registry.PlayerId}.json");
 			using (Stream stream = await playerBlob.OpenWriteAsync(true))
 				stream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(registry)));
 		}
 
 		public async Task DeletePlayerRegistry (string playerId)
 		{
-			BlockBlobClient playerBlob = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{playerId}.json");
+			BlockBlobClient playerBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{playerId}.json");
 			if (await playerBlob.ExistsAsync())
 				await playerBlob.DeleteAsync();
 		}
@@ -69,7 +70,7 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 
 		public async Task DeleteMatchmakingHistory (string playerId, string matchId)
 		{
-			TableClient matchmakingTable = new TableClient("UseDevelopmentStorage=true", "Matchmaking");
+			TableClient matchmakingTable = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Matchmaking");
 			Azure.Pageable<PlayerLookForMatchEntity> query;
 			if (string.IsNullOrEmpty(matchId))
 				query = matchmakingTable.Query<PlayerLookForMatchEntity>(entry => entry.RowKey == playerId);
@@ -85,7 +86,7 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 
 		public async Task<MatchRegistry> GetMatchRegistry (string matchId)
 		{
-			BlockBlobClient matchBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{matchId}.json");
+			BlockBlobClient matchBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "matches", $"{matchId}.json");
 			if (await matchBlob.ExistsAsync())
 				using (Stream stream = await matchBlob.OpenReadAsync(true))
 					return JsonConvert.DeserializeObject<MatchRegistry>(Helper.ReadBytes(stream));
@@ -94,14 +95,14 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 
 		public async Task DeleteMatchRegistry (string matchId)
 		{
-			BlockBlobClient matchBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{matchId}.json");
+			BlockBlobClient matchBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "matches", $"{matchId}.json");
 			if (await matchBlob.ExistsAsync())
 				await matchBlob.DeleteAsync();
 		}
 
 		public async Task SetMatchRegistry (MatchRegistry matchRegistry)
 		{
-			BlockBlobClient matchBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{matchRegistry.MatchId}.json");
+			BlockBlobClient matchBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "matches", $"{matchRegistry.MatchId}.json");
 			using Stream stream = await matchBlob.OpenWriteAsync(true);
 			stream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(matchRegistry)));
 		}
@@ -109,13 +110,13 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 		// Action
 		//public async Task RegisterAction (string matchId, string playerId, Dictionary<string, string> content)
 		//{
-		//	TableClient actionsTable = new TableClient("UseDevelopmentStorage=true", "ActionHistory");
+		//	TableClient actionsTable = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "ActionHistory");
 		//	await actionsTable.UpsertEntityAsync(new PlayerActionEntity { PartitionKey = matchId, RowKey = playerId, Content = JsonConvert.SerializeObject(content) });
 		//}
 		//public async Task<ActionInfo[]> GetActionHistory (string matchId, string[] players, string actionName)
 		//{
 		//	await Task.Delay(1);
-		//	TableClient actionsTable = new TableClient("UseDevelopmentStorage=true", "ActionHistory");
+		//	TableClient actionsTable = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "ActionHistory");
 		//	Azure.Pageable<PlayerActionEntity> query;
 		//	if (!string.IsNullOrEmpty(actionName))
 		//	{
@@ -153,7 +154,7 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 		//}
 		//public async Task DeleteActionHistory (string matchId)
 		//{
-		//	TableClient actionsTable = new TableClient("UseDevelopmentStorage=true", "ActionHistory");
+		//	TableClient actionsTable = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "ActionHistory");
 		//	Azure.Pageable<PlayerActionEntity> query = actionsTable.Query<PlayerActionEntity>(entry => entry.PartitionKey == matchId);
 		//	foreach (var item in query)
 		//		await actionsTable.DeleteEntityAsync(item.PartitionKey, item.RowKey);
@@ -162,7 +163,7 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 
 		public async Task<StateRegistry> GetState (string matchId)
 		{
-			BlockBlobClient stateBlob = new BlockBlobClient("UseDevelopmentStorage=true", "states", $"{matchId}.json");
+			BlockBlobClient stateBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "states", $"{matchId}.json");
 			StateRegistry state = null;
 			if (await stateBlob.ExistsAsync())
 				using (Stream stream = await stateBlob.OpenReadAsync())
@@ -172,7 +173,7 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 
 		public async Task SetState (string matchId, StateRegistry state)
 		{
-			BlockBlobClient stateBlob = new BlockBlobClient("UseDevelopmentStorage=true", "states", $"{matchId}.json");
+			BlockBlobClient stateBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "states", $"{matchId}.json");
 			bool stateSetSuccessfully = false;
 			while (!stateSetSuccessfully)
 			{
@@ -192,7 +193,7 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 
 		public async Task DeleteState (string matchId)
 		{
-			BlockBlobClient statesBlob = new BlockBlobClient("UseDevelopmentStorage=true", "states", $"{matchId}.json");
+			BlockBlobClient statesBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "states", $"{matchId}.json");
 			if (await statesBlob.ExistsAsync())
 				await statesBlob.DeleteAsync();
 		}

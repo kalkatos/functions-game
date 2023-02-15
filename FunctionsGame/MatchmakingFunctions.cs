@@ -34,15 +34,16 @@ namespace Kalkatos.FunctionsGame
 		{
 			log.LogInformation($"   [{nameof(FindMatch)}] Executing Find Match.");
 
+			string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
 			// Get player region and other matchmaking related info
-			BlockBlobClient playerInfoFile = new BlockBlobClient("UseDevelopmentStorage=true", "players", $"{playerId}.json");
+			BlockBlobClient playerInfoFile = new BlockBlobClient(connectionString, "players", $"{playerId}.json");
 			using Stream stream = await playerInfoFile.OpenReadAsync();
 			string playerRegistrySerialized = Helper.ReadBytes(stream);
 			PlayerRegistry playerRegistry = JsonConvert.DeserializeObject<PlayerRegistry>(playerRegistrySerialized);
 			string playerRegion = playerRegistry.Region;
 
 			// Check if there is an entry in matchmaking for this player, if not add one
-			TableClient matchmakingTable = new TableClient("UseDevelopmentStorage=true", "Matchmaking");
+			TableClient matchmakingTable = new TableClient(connectionString, "Matchmaking");
 			var playerQuery = matchmakingTable.QueryAsync<PlayerLookForMatchEntity>((entity) => entity.PartitionKey == playerRegion && entity.RowKey == playerId);
 			var playerQueryEnumerator = playerQuery.GetAsyncEnumerator();
 			if (!await playerQueryEnumerator.MoveNextAsync())
@@ -132,7 +133,7 @@ namespace Kalkatos.FunctionsGame
 			}
 
 			// Get the match with the id in the matches blob
-			BlockBlobClient matchesBlob = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{request.MatchId}.json");
+			BlockBlobClient matchesBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "matches", $"{request.MatchId}.json");
 			if (await matchesBlob.ExistsAsync())
 			{
 				PlayerInfo[] players = null;
@@ -395,11 +396,11 @@ namespace Kalkatos.FunctionsGame
 					CreatedTime = DateTime.UtcNow,
 				};
 
-				BlockBlobClient blobClient = new BlockBlobClient("UseDevelopmentStorage=true", "matches", $"{newMatchId}.json");
+				BlockBlobClient blobClient = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "matches", $"{newMatchId}.json");
 				using Stream stream = blobClient.OpenWrite(true);
 				stream.Write(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(matchInfo)));
 
-				//BlockBlobClient stateBlob = new BlockBlobClient("UseDevelopmentStorage=true", "states", $"{newMatchId}.json");
+				//BlockBlobClient stateBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "states", $"{newMatchId}.json");
 				//StateRegistry newStateRegistry = new StateRegistry(matchInfo.PlayerIds);
 				//using (Stream stream2 = stateBlob.OpenWrite(true))
 				//	stream2.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(newStateRegistry)));
