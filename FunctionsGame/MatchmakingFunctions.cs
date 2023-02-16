@@ -141,6 +141,8 @@ namespace Kalkatos.FunctionsGame
 				{
 					string serializedMatch = Helper.ReadBytes(stream);
 					MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(serializedMatch);
+					if (match.Status == (int)MatchStatus.Ended)
+						return JsonConvert.SerializeObject(new MatchResponse { IsError = true, Message = $"Match is over." });
 					players = new PlayerInfo[match.PlayerIds.Length];
 					int playerIndex = 0;
 					foreach (var player in match.PlayerInfos)

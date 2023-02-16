@@ -6,6 +6,8 @@ namespace Kalkatos.FunctionsGame.Registry
 {
 	public class StateRegistry
 	{
+		public bool IsMatchEnded;
+
 		[JsonProperty] private Dictionary<string, string> publicProperties;
 		[JsonProperty] private Dictionary<string, Dictionary<string, string>> privateProperties;
 		private int hash;

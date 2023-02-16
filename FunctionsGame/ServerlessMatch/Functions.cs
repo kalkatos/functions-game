@@ -93,8 +93,6 @@ namespace Kalkatos.FunctionsGame
 			MatchRegistry match = await service.GetMatchRegistry(request.MatchId);
 			if (match == null)
 				return new StateResponse { IsError = true, Message = "Match not found." };
-			if (match.Status == (int)MatchStatus.Ended)
-				return new StateResponse { IsError = true, Message = "Match is over." };
 			if (!match.HasPlayer(request.PlayerId))
 				return new StateResponse { IsError = true, Message = "Player is not on that match." };
 			StateRegistry currentState = await service.GetState(request.MatchId);
@@ -109,6 +107,7 @@ namespace Kalkatos.FunctionsGame
 
 					return new StateResponse { StateInfo = currentState.GetStateInfo(request.PlayerId) };
 				case (int)MatchStatus.Started:
+				case (int)MatchStatus.Ended:
 					currentState = await PrepareTurn(match, currentState);
 					StateInfo info = currentState.GetStateInfo(request.PlayerId);
 					if (info.Hash == request.LastHash)
@@ -117,8 +116,6 @@ namespace Kalkatos.FunctionsGame
 					Logger.Log("   [GetMatchState] " + JsonConvert.SerializeObject(currentState));
 
 					return new StateResponse { StateInfo = info };
-				case (int)MatchStatus.Ended:
-					return new StateResponse { IsError = true, Message = "Match is over." };
 			}
 			return new StateResponse { IsError = true, Message = "Match is in an unknown state." };
 		}
@@ -168,9 +165,15 @@ namespace Kalkatos.FunctionsGame
 
 		private static async Task<StateRegistry> PrepareTurn (MatchRegistry match, StateRegistry lastState)
 		{
-			if (lastState == null)
-				game.SetConfig(await service.GetGameConfig(game.GameId));
 			StateRegistry newState = game.PrepareTurn(match, lastState);
+			if (newState.IsMatchEnded)
+			{
+				match.Status = (int)MatchStatus.Ended;
+				await service.SetMatchRegistry(match);
+				await service.SetState(match.MatchId, newState);
+				await service.ScheduleCheckMatch(game.Settings.FinalCheckMatchDelay * 1000 + rand.Next(0, 300), match.MatchId, newState.Hash);
+				return newState;
+			}
 			if (lastState != null && newState.Hash == lastState.Hash)
 				return lastState;
 			await service.SetState(match.MatchId, newState);
