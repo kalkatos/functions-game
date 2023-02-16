@@ -1,7 +1,13 @@
 {
-	"FirstTurnDelay":"30",
-	"PlayPhaseStartDelay":"5",
-	"TurnDuration":"10",
-	"EndTurnDelay":"7",
-	"TargetVictoryPoints":"2"
+	"FirstCheckMatchDelay":45,
+	"RecurrentCheckMatchDelay":60,
+	"FinalCheckMatchDelay":4,
+	"Settings":
+	{
+		"FirstTurnDelay": "30",
+		"PlayPhaseStartDelay": "5",
+		"TurnDuration": "10",
+		"EndTurnDelay": "7",
+		"TargetVictoryPoints": "2"
+	}
 }

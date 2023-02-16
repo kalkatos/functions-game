@@ -16,11 +16,11 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 	{
 		// Game
 
-		public async Task<Dictionary<string, string>> GetGameConfig (string gameId)
+		public async Task<GameRegistry> GetGameConfig (string gameId)
 		{
 			BlockBlobClient identifierFile = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "games", $"{gameId}.json");
 			using (Stream stream = await identifierFile.OpenReadAsync())
-				return JsonConvert.DeserializeObject<Dictionary<string, string>>(Helper.ReadBytes(stream));
+				return JsonConvert.DeserializeObject<GameRegistry>(Helper.ReadBytes(stream));
 		}
 
 		// Log In

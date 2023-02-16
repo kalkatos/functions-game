@@ -27,6 +27,7 @@ namespace Kalkatos.FunctionsGame.Registry
     public enum MatchStatus
     {
         AwaitingPlayers,
+        WaitingToStart,
         Started,
         FailedToStart,
         Ended

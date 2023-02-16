@@ -7,6 +7,7 @@ namespace Kalkatos.FunctionsGame.Registry
 	public class StateRegistry
 	{
 		public bool IsMatchEnded;
+		public int TurnNumber;
 
 		[JsonProperty] private Dictionary<string, string> publicProperties;
 		[JsonProperty] private Dictionary<string, Dictionary<string, string>> privateProperties;
@@ -62,6 +63,8 @@ namespace Kalkatos.FunctionsGame.Registry
 			}
 			StateRegistry newState = new StateRegistry(privatePropertiesClone);
 			newState.UpsertPublicProperties(publicProperties);
+			newState.IsMatchEnded = IsMatchEnded;
+			newState.TurnNumber = TurnNumber;
 			return newState;
 		}
 

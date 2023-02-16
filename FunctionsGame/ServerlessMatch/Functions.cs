@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Kalkatos.FunctionsGame.Game;
 using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
 using Newtonsoft.Json;
@@ -15,15 +14,17 @@ namespace Kalkatos.FunctionsGame
 #else
 		private static IService service;
 #endif
-		private static IGame game = new Game.Rps.RpsGame();
+		private static IGame game = new Rps.RpsGame();
+		private static Random rand = new Random();
 
 		// =========== Log In =================
 
 		public static async Task<LoginResponse> LogIn (LoginRequest request)
 		{
-			if (string.IsNullOrEmpty(request.Identifier))
+			if (string.IsNullOrEmpty(request.Identifier) || string.IsNullOrEmpty(request.GameId))
 				return new LoginResponse { IsError = true, Message = "Identifier is null. Must be an unique user identifier." };
 
+			game.Settings = await service.GetGameConfig(request.GameId);
 			string playerId;
 			PlayerRegistry playerRegistry;
 			bool isRegistered = await service.IsRegisteredDevice(request.Identifier);
@@ -73,7 +74,7 @@ namespace Kalkatos.FunctionsGame
 			StateRegistry state = await service.GetState(request.MatchId);
 			if (!game.IsActionAllowed(request.PlayerId, request.Changes, match, state))
 				return new ActionResponse { IsError = true, Message = "Action is not allowed." };
-			StateRegistry newState = state?.Clone() ?? await PrepareTurn(match, null);
+			StateRegistry newState = state?.Clone() ?? await CreateFirstStateAndRegister(match);
 			if (request.Changes.PublicProperties != null)
 				newState.UpsertPublicProperties(request.Changes.PublicProperties);
 			if (request.Changes.PrivateProperties != null)
@@ -101,7 +102,10 @@ namespace Kalkatos.FunctionsGame
 			switch (match.Status)
 			{
 				case (int)MatchStatus.AwaitingPlayers:
-					await StartMatch(match, currentState);
+					match.Status = (int)MatchStatus.Started;
+					match.StartTime = DateTime.UtcNow;
+					await service.SetMatchRegistry(match);
+					currentState = await PrepareTurn (match, currentState);
 
 					Logger.Log("   [GetMatchState] " + JsonConvert.SerializeObject(currentState));
 
@@ -133,13 +137,13 @@ namespace Kalkatos.FunctionsGame
 		// Temp
 		public static void VerifyMatch (string matchId)
 		{
-			_ = Task.Run(async () => { await service.ScheduleCheckMatch(45000, matchId, 0); });
+			_ = Task.Run(async () => { await service.ScheduleCheckMatch(game.Settings.FirstCheckMatchDelay * 1000 + rand.Next(0, 300), matchId, 0); });
 		}
 
 		// Temp
 		public static void CreateFirstState (MatchRegistry match)
 		{
-			_ = Task.Run(async () => await PrepareTurn(match, null));
+			_ = Task.Run(async () => await CreateFirstStateAndRegister(match));
 		}
 
 		public static async Task CheckMatch (string matchId, int lastHash)
@@ -150,21 +154,22 @@ namespace Kalkatos.FunctionsGame
 			if (!HasHandshakingFromAllPlayers(state) || state.Hash == lastHash)
 				await DeleteMatch(matchId);
 			else
-				await service.ScheduleCheckMatch(60000, matchId, state.Hash);
+				await service.ScheduleCheckMatch(game.Settings.RecurrentCheckMatchDelay * 1000 + rand.Next(0, 300), matchId, state.Hash);
 		}
 
 		// ===========  P R I V A T E  =================
 
-		private static async Task<StateRegistry> StartMatch (MatchRegistry match, StateRegistry lastState)
+		private static async Task<StateRegistry> CreateFirstStateAndRegister (MatchRegistry match)
 		{
-			match.Status = (int)MatchStatus.Started;
-			match.StartTime = DateTime.UtcNow;
-			await service.SetMatchRegistry(match);
-			return await PrepareTurn(match, lastState);
+			StateRegistry newState = game.CreateFirstState(match);
+			await service.SetState(match.MatchId, newState);
+			return newState;
 		}
 
 		private static async Task<StateRegistry> PrepareTurn (MatchRegistry match, StateRegistry lastState)
 		{
+			if (lastState == null)
+				Logger.Log("   [PrepareTurn] Last state should not be null.");
 			StateRegistry newState = game.PrepareTurn(match, lastState);
 			if (newState.IsMatchEnded)
 			{
@@ -196,7 +201,7 @@ namespace Kalkatos.FunctionsGame
 	public interface IService
 	{
 		// Game
-		Task<Dictionary<string, string>> GetGameConfig (string gameId);
+		Task<GameRegistry> GetGameConfig (string gameId);
 
 		// Log in
 		Task<bool> IsRegisteredDevice (string deviceId);

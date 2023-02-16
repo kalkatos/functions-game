@@ -182,12 +182,12 @@ namespace Kalkatos.FunctionsGame
 			MatchRegistry match = info.Match;
 			TurnSettings settings = info.TurnSettings;
 
-			//StateInfo state = await MatchFunctions.PrepareTurn(info.TurnIndex, match, settings);
+			//StateInfo state = await MatchFunctions.PrepareTurn(info.TurnIndex, match, gameSettings);
 			//info.TurnIndex++;
 
 			//if ()
 			//{
-			//	DateTime nextRun = context.CurrentUtcDateTime.AddSeconds(settings.DelayBetweenRuns);
+			//	DateTime nextRun = context.CurrentUtcDateTime.AddSeconds(gameSettings.DelayBetweenRuns);
 			//	await context.CreateTimer(nextRun, CancellationToken.None);
 			//	context.ContinueAsNew(info);
 			//}
