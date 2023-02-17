@@ -25,15 +25,9 @@ namespace Kalkatos.FunctionsGame
 				return new LoginResponse { IsError = true, Message = "Identifier is null. Must be an unique user identifier." };
 
 			game.Settings = await service.GetGameConfig(request.GameId);
-			string playerId;
 			PlayerRegistry playerRegistry;
-			bool isRegistered = await service.IsRegisteredDevice(request.Identifier);
-			if (isRegistered)
-			{
-				playerId = await service.GetPlayerId(request.Identifier);
-				playerRegistry = await service.GetPlayerRegistry(playerId);
-			}
-			else
+			string playerId = await service.GetPlayerId(request.Identifier);
+			if (string.IsNullOrEmpty(playerId))
 			{
 				playerId = Guid.NewGuid().ToString();
 				await service.RegisterDeviceWithId(request.Identifier, playerId);
@@ -49,6 +43,11 @@ namespace Kalkatos.FunctionsGame
 					FirstAccess = DateTime.UtcNow
 				};
 				await service.SetPlayerRegistry(playerRegistry);
+			}
+			else
+			{
+				playerId = await service.GetPlayerId(request.Identifier);
+				playerRegistry = await service.GetPlayerRegistry(playerId);
 			}
 
 			return new LoginResponse
@@ -202,33 +201,22 @@ namespace Kalkatos.FunctionsGame
 	{
 		// Game
 		Task<GameRegistry> GetGameConfig (string gameId);
-
 		// Log in
-		Task<bool> IsRegisteredDevice (string deviceId);
 		Task<string> GetPlayerId (string deviceId);
 		Task RegisterDeviceWithId (string deviceId, string playerId);
 		Task<PlayerRegistry> GetPlayerRegistry (string playerId);
 		Task SetPlayerRegistry (PlayerRegistry registry);
 		Task DeletePlayerRegistry (string playerId);
-
 		// Matchmaking
 		Task DeleteMatchmakingHistory (string playerId, string matchId);
-
 		// Match
 		Task<MatchRegistry> GetMatchRegistry (string matchId);
 		Task SetMatchRegistry (MatchRegistry matchRegistry);
 		Task DeleteMatchRegistry (string matchId);
-
-		// Action
-		//Task RegisterAction (string matchId, string playerId, Dictionary<string, string> content);
-		//Task<ActionInfo[]> GetActionHistory (string matchId, string[] players, string actionName);
-		//Task DeleteActionHistory (string matchId);
-
 		// States
 		Task<StateRegistry> GetState (string matchId);
 		Task SetState (string matchId, StateRegistry state);
 		Task DeleteState (string matchId);
-
 		// General
 		Task ScheduleCheckMatch (int millisecondsDelay, string matchId, int lastHash);
 	}

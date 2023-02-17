@@ -14,7 +14,7 @@ namespace Kalkatos.FunctionsGame.Rps
 		private int endTurnDelay = 7;
 		private int targetVictoryPoints = 2;
 		private Random rand = new Random();
-		private const string humanMoves = "SPPRRSSPRSPRPSPRSRPSRPRPSPPRPSPSPRPSPRPSPSRPPSPRPSPSPSRPSRPSRPSRPSRPSPRPRPSPSRPSPRSRPSRPSRPSPPRSPRSRPSPRPRPRPSPRPSPRSPRPSRP";
+		private const string humanMoves = "SPPRRSSPRPSPSPRPSPRSRSSPRRSPPRSPRPPRSPRPSRPPPSRPSRPSRPPRSPRPSPRSRPSRPPRRPSPRSRPSRPPRPSPPRPRPSPRPSPRSPRPSRP";
 		private int currentMove = -1;
 		private GameRegistry gameSettings;
 

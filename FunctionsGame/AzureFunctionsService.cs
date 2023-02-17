@@ -19,23 +19,21 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 		public async Task<GameRegistry> GetGameConfig (string gameId)
 		{
 			BlockBlobClient identifierFile = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "games", $"{gameId}.json");
-			using (Stream stream = await identifierFile.OpenReadAsync())
-				return JsonConvert.DeserializeObject<GameRegistry>(Helper.ReadBytes(stream));
+			if (await identifierFile.ExistsAsync())
+				using (Stream stream = await identifierFile.OpenReadAsync())
+					return JsonConvert.DeserializeObject<GameRegistry>(Helper.ReadBytes(stream));
+			return null;
 		}
 
 		// Log In
 
-		public async Task<bool> IsRegisteredDevice (string deviceId)
-		{
-			BlockBlobClient identifierFile = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{deviceId}");
-			return await identifierFile.ExistsAsync();
-		}
-
 		public async Task<string> GetPlayerId (string deviceId)
 		{
 			BlockBlobClient identifierFile = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{deviceId}");
-			using (Stream stream = await identifierFile.OpenReadAsync())
-				return Helper.ReadBytes(stream);
+			if (await identifierFile.ExistsAsync())
+				using (Stream stream = await identifierFile.OpenReadAsync())
+					return Helper.ReadBytes(stream);
+			return null;
 		}
 
 		public async Task RegisterDeviceWithId (string deviceId, string playerId)
@@ -48,8 +46,10 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 		public async Task<PlayerRegistry> GetPlayerRegistry (string playerId)
 		{
 			BlockBlobClient playerBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{playerId}.json");
-			using (Stream stream = await playerBlob.OpenReadAsync())
-				return JsonConvert.DeserializeObject<PlayerRegistry>(Helper.ReadBytes(stream));
+			if (await playerBlob.ExistsAsync())
+				using (Stream stream = await playerBlob.OpenReadAsync())
+					return JsonConvert.DeserializeObject<PlayerRegistry>(Helper.ReadBytes(stream));
+			return null;
 		}
 
 		public async Task SetPlayerRegistry (PlayerRegistry registry)

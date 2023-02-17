@@ -7,7 +7,7 @@
 		"FirstTurnDelay": "30",
 		"PlayPhaseStartDelay": "5",
 		"TurnDuration": "10",
-		"EndTurnDelay": "7",
+		"EndTurnDelay": "5",
 		"TargetVictoryPoints": "2"
 	}
 }
