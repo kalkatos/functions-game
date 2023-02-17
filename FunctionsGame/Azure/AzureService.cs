@@ -1,18 +1,18 @@
-﻿using System.Text;
-using System.IO;
-using System.Threading.Tasks;
+﻿using Azure.Data.Tables;
 using Azure.Storage.Blobs.Specialized;
-using Newtonsoft.Json;
-using Kalkatos.FunctionsGame.Registry;
-using Azure.Data.Tables;
-using System.Collections.Generic;
-using System;
 using Azure.Storage.Queues;
+using Kalkatos.FunctionsGame.Registry;
+using Newtonsoft.Json;
+using System;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 
-namespace Kalkatos.FunctionsGame.AzureFunctions
+namespace Kalkatos.FunctionsGame.Azure
 {
 
-	public class AzureFunctionsService : IService
+	public class AzureService : IService
 	{
 		// Game
 
@@ -68,10 +68,28 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 
 		// Matchmaking
 
+		public async Task<MatchmakingEntry[]> GetMatchmakingEntries (string region, string playerId, string matchId, MatchmakingStatus status)
+		{
+			await Task.Delay(1);
+			TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Matchmaking");
+			// TODO Check the other parameters too
+			var query = tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == playerId);
+			int count = query.Count();
+			if (count > 0)
+			{
+				MatchmakingEntry[] result = new MatchmakingEntry[count];
+				int index = 0;
+				foreach (var item in query)
+					result[index++] = item.ToEntry();
+				return result;
+			}
+			return null;
+		}
+
 		public async Task DeleteMatchmakingHistory (string playerId, string matchId)
 		{
 			TableClient matchmakingTable = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Matchmaking");
-			Azure.Pageable<PlayerLookForMatchEntity> query;
+			global::Azure.Pageable<PlayerLookForMatchEntity> query;
 			if (string.IsNullOrEmpty(matchId))
 				query = matchmakingTable.Query<PlayerLookForMatchEntity>(entry => entry.RowKey == playerId);
 			else if (string.IsNullOrEmpty(playerId))
@@ -107,58 +125,14 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 			stream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(matchRegistry)));
 		}
 
-		// Action
-		//public async Task RegisterAction (string matchId, string playerId, Dictionary<string, string> content)
-		//{
-		//	TableClient actionsTable = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "ActionHistory");
-		//	await actionsTable.UpsertEntityAsync(new PlayerActionEntity { PartitionKey = matchId, RowKey = playerId, Content = JsonConvert.SerializeObject(content) });
-		//}
-		//public async Task<ActionInfo[]> GetActionHistory (string matchId, string[] players, string actionName)
-		//{
-		//	await Task.Delay(1);
-		//	TableClient actionsTable = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "ActionHistory");
-		//	Azure.Pageable<PlayerActionEntity> query;
-		//	if (!string.IsNullOrEmpty(actionName))
-		//	{
-		//		if (players == null)
-		//			query = actionsTable.Query<PlayerActionEntity>(entry =>
-		//				entry.PartitionKey == matchId &&
-		//				entry.ActionName == actionName);
-		//		else
-		//			query = actionsTable.Query<PlayerActionEntity>(entry =>
-		//				entry.PartitionKey == matchId &&
-		//				Array.IndexOf(players, entry.RowKey) >= 0 &&  // TODO Test getting action history with an array of players
-		//				entry.ActionName == actionName);
-		//	}
-		//	else
-		//	{
-		//		if (players == null)
-		//			query = actionsTable.Query<PlayerActionEntity>(entry =>
-		//				entry.PartitionKey == matchId);
-		//		else
-		//			query = actionsTable.Query<PlayerActionEntity>(entry =>
-		//				entry.PartitionKey == matchId &&
-		//				Array.IndexOf(players, entry.RowKey) >= 0);
-		//	}
-		//	int count = query.Count();
-		//	if (count == 0)
-		//		return null;
-		//	ActionInfo[] actions = new ActionInfo[count];
-		//	int index = 0;
-		//	foreach (var item in query)
-		//	{
-		//		actions[index] = new ActionInfo { PlayerAlias = item.PlayerAlias, ActionName = item.ActionName, Parameter = JsonConvert.DeserializeObject(item.SerializedParameter) };
-		//		index++;
-		//	}
-		//	return actions;
-		//}
-		//public async Task DeleteActionHistory (string matchId)
-		//{
-		//	TableClient actionsTable = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "ActionHistory");
-		//	Azure.Pageable<PlayerActionEntity> query = actionsTable.Query<PlayerActionEntity>(entry => entry.PartitionKey == matchId);
-		//	foreach (var item in query)
-		//		await actionsTable.DeleteEntityAsync(item.PartitionKey, item.RowKey);
-		//}
+		public async Task ScheduleCheckMatch (int millisecondsDelay, string matchId, int lastHash)
+		{
+			QueueClient checkMatchQueue = new QueueClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "check-match");
+			string message = $"{matchId}|{lastHash}";
+			var bytes = Encoding.UTF8.GetBytes(message);
+			await checkMatchQueue.SendMessageAsync(Convert.ToBase64String(bytes), TimeSpan.FromMilliseconds(millisecondsDelay));
+		}
+
 		// State
 
 		public async Task<StateRegistry> GetState (string matchId)
@@ -186,7 +160,7 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 				}
 				catch
 				{
-					Logger.Log("   [SetState] Retrying set");
+					Logger.LogWarning("   [SetState] Retrying set");
 					await Task.Delay(100);
 				}
 			}
@@ -197,14 +171,6 @@ namespace Kalkatos.FunctionsGame.AzureFunctions
 			BlockBlobClient statesBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "states", $"{matchId}.json");
 			if (await statesBlob.ExistsAsync())
 				await statesBlob.DeleteAsync();
-		}
-
-		public async Task ScheduleCheckMatch (int millisecondsDelay, string matchId, int lastHash)
-		{
-			QueueClient checkMatchQueue = new QueueClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "check-match");
-			string message = $"{matchId}|{lastHash}";
-			var bytes = Encoding.UTF8.GetBytes(message);
-			await checkMatchQueue.SendMessageAsync(Convert.ToBase64String(bytes), TimeSpan.FromMilliseconds(millisecondsDelay));
 		}
 	}
 }

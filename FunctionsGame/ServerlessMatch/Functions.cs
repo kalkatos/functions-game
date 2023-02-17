@@ -1,21 +1,27 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
+﻿using Azure.Data.Tables;
+using Azure.Storage.Blobs.Specialized;
 using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
 using Newtonsoft.Json;
+using System;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Kalkatos.FunctionsGame
 {
-	public class MatchFunctions
+	public static class MatchFunctions
 	{
 #if AZURE_FUNCTIONS
-		private static IService service = new AzureFunctions.AzureFunctionsService();
+		private static IService service = new Azure.AzureService();
 #else
 		private static IService service;
 #endif
 		private static IGame game = new Rps.RpsGame();
 		private static Random rand = new Random();
+		private const string consonantsUpper = "BCDFGHJKLMNPQRSTVWXZ";
+		private const string consonantsLower = "bcdfghjklmnpqrstvwxz";
+		private const string vowels = "aeiouy";
 
 		// =========== Log In =================
 
@@ -45,10 +51,7 @@ namespace Kalkatos.FunctionsGame
 				await service.SetPlayerRegistry(playerRegistry);
 			}
 			else
-			{
-				playerId = await service.GetPlayerId(request.Identifier);
 				playerRegistry = await service.GetPlayerRegistry(playerId);
-			}
 
 			return new LoginResponse
 			{
@@ -57,6 +60,26 @@ namespace Kalkatos.FunctionsGame
 				PlayerAlias = playerRegistry.Info.Alias,
 				SavedNickname = playerRegistry.Info.Nickname,
 			};
+		}
+
+		public static async Task<Response> SetPlayerData (SetPlayerDataRequest request)
+		{
+			if (request.Data == null || request.Data.Count() == 0)
+				return new NetworkError { Tag = NetworkErrorTag.WrongParameters, Message = "Request Data is null or empty." };
+			if (string.IsNullOrEmpty(request.PlayerId))
+				return new NetworkError { Tag = NetworkErrorTag.WrongParameters, Message = "Player ID is null or empty." };
+			PlayerRegistry playerRegistry = await service.GetPlayerRegistry(request.PlayerId);
+			if (playerRegistry == null)
+				return new NetworkError { Tag = NetworkErrorTag.WrongParameters, Message = "Player not found." };
+			if (request.Data.ContainsKey("Nickname"))
+			{
+				playerRegistry.Info.Nickname = request.Data["Nickname"];
+				request.Data.Remove("Nickname");
+			}
+			foreach (var item in request.Data)
+				playerRegistry.Info.CustomData[item.Key] = item.Value;
+			await service.SetPlayerRegistry(playerRegistry);
+			return new Response { Message = "Ok" };
 		}
 
 		// =========== Action =================
@@ -86,6 +109,58 @@ namespace Kalkatos.FunctionsGame
 
 		// =========== Match =================
 
+		// TODO Change to use service 
+		public static async Task<MatchResponse> GetMatch (MatchRequest request)
+		{
+			if (request == null || string.IsNullOrEmpty(request.PlayerId))
+				return new MatchResponse { IsError = true, Message = "Wrong Parameters." };
+
+			if (string.IsNullOrEmpty(request.MatchId))
+			{
+				// Get the match id of the match to which that player is assigned in the matchmaking table
+				var entries = await service.GetMatchmakingEntries(null, request.PlayerId, null, MatchmakingStatus.Undefined);
+				if (entries == null || entries.Length == 0)
+					return new MatchResponse { IsError = true, Message = $"Didn't find any match for player." };
+				if (entries.Length > 1)
+					Logger.LogWarning($"[{nameof(GetMatch)}] More than one entry in matchmaking found! Player = {request.PlayerId} Query = {entries}");
+
+				var playerEntry = entries[0];
+				request.MatchId = playerEntry.MatchId;
+				Logger.LogWarning($"   [{nameof(GetMatch)}] Found a match: {playerEntry.MatchId}");
+			}
+
+			// TODO Continue conversion of the GetMatch
+			// Get the match with the id in the matches blob
+			BlockBlobClient matchesBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "matches", $"{request.MatchId}.json");
+			if (await matchesBlob.ExistsAsync())
+			{
+				PlayerInfo[] players = null;
+				using (Stream stream = await matchesBlob.OpenReadAsync())
+				{
+					string serializedMatch = Helper.ReadBytes(stream);
+					MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(serializedMatch);
+					if (match.Status == (int)MatchStatus.Ended)
+						return new MatchResponse { IsError = true, Message = $"Match is over." };
+					players = new PlayerInfo[match.PlayerIds.Length];
+					int playerIndex = 0;
+					foreach (var player in match.PlayerInfos)
+					{
+						players[playerIndex] = player.Clone();
+						playerIndex++;
+					}
+					Logger.LogWarning($"   [{nameof(GetMatch)}] Serialized match === {serializedMatch}");
+				}
+
+				return new MatchResponse
+				{
+					MatchId = request.MatchId,
+					Players = players
+				};
+			}
+			Logger.LogWarning($"   [{nameof(GetMatch)}] Found no match file with id {request.MatchId}");
+			return new MatchResponse { IsError = true, Message = $"Match with id {request.MatchId} wasn't found." };
+		}
+
 		public static async Task<StateResponse> GetMatchState (StateRequest request)
 		{
 			if (string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.MatchId))
@@ -106,7 +181,7 @@ namespace Kalkatos.FunctionsGame
 					await service.SetMatchRegistry(match);
 					currentState = await PrepareTurn (match, currentState);
 
-					Logger.Log("   [GetMatchState] " + JsonConvert.SerializeObject(currentState));
+					Logger.LogWarning("   [GetMatchState] StateRegistry = = " + JsonConvert.SerializeObject(currentState));
 
 					return new StateResponse { StateInfo = currentState.GetStateInfo(request.PlayerId) };
 				case (int)MatchStatus.Started:
@@ -116,7 +191,7 @@ namespace Kalkatos.FunctionsGame
 					if (info.Hash == request.LastHash)
 						return new StateResponse { IsError = true, Message = "Current state is the same known state." };
 
-					Logger.Log("   [GetMatchState] " + JsonConvert.SerializeObject(currentState));
+					Logger.LogWarning("   [GetMatchState] StateRegistry = = " + JsonConvert.SerializeObject(currentState));
 
 					return new StateResponse { StateInfo = info };
 			}
@@ -125,7 +200,7 @@ namespace Kalkatos.FunctionsGame
 
 		public static async Task DeleteMatch (string matchId)
 		{
-			Logger.Log("   [DeleteMatch] " + matchId);
+			Logger.LogWarning("   [DeleteMatch] " + matchId);
 			if (string.IsNullOrEmpty(matchId))
 				return;
 			await service.DeleteMatchmakingHistory(null, matchId);
@@ -168,7 +243,7 @@ namespace Kalkatos.FunctionsGame
 		private static async Task<StateRegistry> PrepareTurn (MatchRegistry match, StateRegistry lastState)
 		{
 			if (lastState == null)
-				Logger.Log("   [PrepareTurn] Last state should not be null.");
+				Logger.LogError("   [PrepareTurn] Last state should not be null.");
 			StateRegistry newState = game.PrepareTurn(match, lastState);
 			if (newState.IsMatchEnded)
 			{
@@ -195,6 +270,21 @@ namespace Kalkatos.FunctionsGame
 					count++;
 			return count == players.Length;
 		}
+
+		public static string CreateBotNickname ()
+		{
+			string result = "";
+			for (int i = 0; i < 6; i++)
+			{
+				if (i == 0)
+					result += consonantsUpper[rand.Next(0, consonantsUpper.Length)];
+				else if (i % 2 == 0)
+					result += consonantsLower[rand.Next(0, consonantsLower.Length)];
+				else
+					result += vowels[rand.Next(0, vowels.Length)];
+			}
+			return "Guest-" + result;
+		}
 	}
 
 	public interface IService
@@ -208,6 +298,7 @@ namespace Kalkatos.FunctionsGame
 		Task SetPlayerRegistry (PlayerRegistry registry);
 		Task DeletePlayerRegistry (string playerId);
 		// Matchmaking
+		Task<MatchmakingEntry[]> GetMatchmakingEntries (string region, string playerId, string matchId, MatchmakingStatus status);
 		Task DeleteMatchmakingHistory (string playerId, string matchId);
 		// Match
 		Task<MatchRegistry> GetMatchRegistry (string matchId);
