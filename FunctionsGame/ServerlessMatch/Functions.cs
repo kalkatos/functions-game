@@ -89,6 +89,8 @@ namespace Kalkatos.FunctionsGame
 			if (string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.MatchId))
 				return new ActionResponse { IsError = true, Message = "Match id and player id may not be null." };
 			MatchRegistry match = await service.GetMatchRegistry(request.MatchId);
+			if (match == null)
+				return new ActionResponse { IsError = true, Message = "Problem retrieving the match." };
 			if (!match.HasPlayer(request.PlayerId))
 				return new ActionResponse { IsError = true, Message = "Player is not on that match." };
 			if (match.Status == (int)MatchStatus.Ended)
