@@ -114,15 +114,23 @@ namespace Kalkatos.FunctionsGame.Azure
 		public async Task DeleteMatchRegistry (string matchId)
 		{
 			BlockBlobClient matchBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "matches", $"{matchId}.json");
-			if (await matchBlob.ExistsAsync())
-				await matchBlob.DeleteAsync();
+			try
+			{
+				if (await matchBlob.ExistsAsync())
+					await matchBlob.DeleteAsync();
+			}
+			catch { }
 		}
 
 		public async Task SetMatchRegistry (MatchRegistry matchRegistry)
 		{
 			BlockBlobClient matchBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "matches", $"{matchRegistry.MatchId}.json");
-			using Stream stream = await matchBlob.OpenWriteAsync(true);
-			stream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(matchRegistry)));
+			try
+			{
+				using (Stream stream = await matchBlob.OpenWriteAsync(true))
+					stream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(matchRegistry)));
+			}
+			catch { }
 		}
 
 		public async Task ScheduleCheckMatch (int millisecondsDelay, string matchId, int lastHash)
@@ -169,8 +177,12 @@ namespace Kalkatos.FunctionsGame.Azure
 		public async Task DeleteState (string matchId)
 		{
 			BlockBlobClient statesBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "states", $"{matchId}.json");
-			if (await statesBlob.ExistsAsync())
-				await statesBlob.DeleteAsync();
+			try
+			{
+				if (await statesBlob.ExistsAsync())
+					await statesBlob.DeleteAsync();
+			} 
+			catch { }
 		}
 	}
 }
