@@ -108,7 +108,6 @@ namespace Kalkatos.FunctionsGame
 
 		// =========== Match =================
 
-		// TODO Change to use service 
 		public static async Task<MatchResponse> GetMatch (MatchRequest request)
 		{
 			if (request == null || string.IsNullOrEmpty(request.PlayerId))
@@ -127,9 +126,6 @@ namespace Kalkatos.FunctionsGame
 				request.MatchId = playerEntry.MatchId;
 				Logger.LogWarning($"   [{nameof(GetMatch)}] Found a match: {playerEntry.MatchId}");
 			}
-
-
-
 
 			MatchRegistry match = await service.GetMatchRegistry(request.MatchId);
 			if (match == null)
@@ -196,7 +192,7 @@ namespace Kalkatos.FunctionsGame
 		// Temp
 		public static void VerifyMatch (string matchId)
 		{
-			_ = Task.Run(async () => { await service.ScheduleCheckMatch(game.Settings.FirstCheckMatchDelay * 1000 + rand.Next(0, 300), matchId, 0); });
+			_ = Task.Run(async () => { await service.ScheduleCheckMatch(game.Settings.FirstCheckMatchDelay * 1000, matchId, 0); });
 		}
 
 		// Temp
@@ -213,7 +209,7 @@ namespace Kalkatos.FunctionsGame
 			if (!HasHandshakingFromAllPlayers(state) || state.Hash == lastHash)
 				await DeleteMatch(matchId);
 			else
-				await service.ScheduleCheckMatch(game.Settings.RecurrentCheckMatchDelay * 1000 + rand.Next(0, 300), matchId, state.Hash);
+				await service.ScheduleCheckMatch(game.Settings.RecurrentCheckMatchDelay * 1000, matchId, state.Hash);
 		}
 
 		// ===========  P R I V A T E  =================
@@ -235,7 +231,7 @@ namespace Kalkatos.FunctionsGame
 				match.Status = (int)MatchStatus.Ended;
 				await service.SetMatchRegistry(match);
 				await service.SetState(match.MatchId, newState);
-				await service.ScheduleCheckMatch(game.Settings.FinalCheckMatchDelay * 1000 + rand.Next(0, 300), match.MatchId, newState.Hash);
+				await service.ScheduleCheckMatch(game.Settings.FinalCheckMatchDelay * 1000, match.MatchId, newState.Hash);
 				return newState;
 			}
 			if (lastState != null && newState.Hash == lastState.Hash)
