@@ -56,65 +56,6 @@ namespace Kalkatos.FunctionsGame.Azure
 			string responseSerialized = JsonConvert.SerializeObject(response);
 			log.LogWarning($"   [{nameof(GetMatch)}] === {responseSerialized}");
 			return responseSerialized;
-
-
-			//if (request == null || string.IsNullOrEmpty(request.PlayerId))
-			//{
-			//	log.LogWarning($"   [{nameof(GetMatch)}] Wrong Parameters. Request = {request}, Player ID = {request?.PlayerId ?? "<empty>"}");
-			//	return JsonConvert.SerializeObject(new MatchResponse { IsError = true, Message = "Wrong Parameters." });
-			//}
-
-			//if (string.IsNullOrEmpty(request.MatchId))
-			//{
-			//	// Get the match id of the match to which that player is assigned in the matchmaking table
-			//	var query = tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == request.PlayerId);
-			//	if (query == null || query.Count() == 0)
-			//	{
-			//		log.LogWarning($"   [{nameof(GetMatch)}] Found no match. Query = {query}");
-			//		return JsonConvert.SerializeObject(new MatchResponse { IsError = true, Message = $"Didn't find any match for player." });
-			//	}
-			//	if (query.Count() > 1)
-			//		log.LogWarning($"[{nameof(GetMatch)}] More than one entry in matchmaking found! Player = {request.PlayerId} Query = {query}");
-
-			//	var playerEntry = query.First();
-			//	string matchId = playerEntry.MatchId;
-			//	request.MatchId = matchId;
-			//	log.LogWarning($"   [{nameof(GetMatch)}] Found a match: {matchId}");
-			//}
-
-			//// Get the match with the id in the matches blob
-			//BlockBlobClient matchesBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "matches", $"{request.MatchId}.json");
-			//if (await matchesBlob.ExistsAsync())
-			//{
-			//	PlayerInfo[] players = null;
-			//	using (Stream stream = await matchesBlob.OpenReadAsync())
-			//	{
-			//		string serializedMatch = Helper.ReadBytes(stream);
-			//		MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(serializedMatch);
-			//		if (match.Status == (int)MatchStatus.Ended)
-			//			return JsonConvert.SerializeObject(new MatchResponse { IsError = true, Message = $"Match is over." });
-			//		players = new PlayerInfo[match.PlayerIds.Length];
-			//		int playerIndex = 0;
-			//		foreach (var player in match.PlayerInfos)
-			//		{
-			//			players[playerIndex] = player.Clone();
-			//			playerIndex++;
-			//		}
-			//		log.LogWarning($"   [{nameof(GetMatch)}] Serialized match === {serializedMatch}");
-			//	}
-
-			//	return JsonConvert.SerializeObject(new MatchResponse
-			//	{
-			//		MatchId = request.MatchId,
-			//		Players = players
-			//	});
-			//}
-			//log.LogWarning($"   [{nameof(GetMatch)}] Found no match file with id {request.MatchId}");
-			//return JsonConvert.SerializeObject(new MatchResponse
-			//{
-			//	IsError = true,
-			//	Message = $"Match with id {request.MatchId} wasn't found."
-			//});
 		}
 
 		// ================================= A C T I O N ==========================================

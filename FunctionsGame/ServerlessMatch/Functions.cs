@@ -1,10 +1,7 @@
-﻿using Azure.Data.Tables;
-using Azure.Storage.Blobs.Specialized;
-using Kalkatos.FunctionsGame.Registry;
+﻿using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
 using Newtonsoft.Json;
 using System;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -131,36 +128,22 @@ namespace Kalkatos.FunctionsGame
 				Logger.LogWarning($"   [{nameof(GetMatch)}] Found a match: {playerEntry.MatchId}");
 			}
 
-			// TODO Continue conversion of the GetMatch
-			// Get the match with the id in the matches blob
-			BlockBlobClient matchesBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "matches", $"{request.MatchId}.json");
-			if (await matchesBlob.ExistsAsync())
-			{
-				PlayerInfo[] players = null;
-				using (Stream stream = await matchesBlob.OpenReadAsync())
-				{
-					string serializedMatch = Helper.ReadBytes(stream);
-					MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(serializedMatch);
-					if (match.Status == (int)MatchStatus.Ended)
-						return new MatchResponse { IsError = true, Message = $"Match is over." };
-					players = new PlayerInfo[match.PlayerIds.Length];
-					int playerIndex = 0;
-					foreach (var player in match.PlayerInfos)
-					{
-						players[playerIndex] = player.Clone();
-						playerIndex++;
-					}
-					Logger.LogWarning($"   [{nameof(GetMatch)}] Serialized match === {serializedMatch}");
-				}
 
-				return new MatchResponse
-				{
-					MatchId = request.MatchId,
-					Players = players
-				};
-			}
-			Logger.LogWarning($"   [{nameof(GetMatch)}] Found no match file with id {request.MatchId}");
-			return new MatchResponse { IsError = true, Message = $"Match with id {request.MatchId} wasn't found." };
+
+
+			MatchRegistry match = await service.GetMatchRegistry(request.MatchId);
+			if (match == null)
+				return new MatchResponse { IsError = true, Message = $"Match with id {request.MatchId} wasn't found." };
+			if (match.Status == (int)MatchStatus.Ended)
+				return new MatchResponse { IsError = true, Message = $"Match is over." };
+			PlayerInfo[] playerInfos = new PlayerInfo[match.PlayerInfos.Length];
+			for (int i = 0; i < match.PlayerInfos.Length; i++)
+				playerInfos[i] = match.PlayerInfos[i].Clone();
+			return new MatchResponse
+			{
+				MatchId = request.MatchId,
+				Players = playerInfos
+			};
 		}
 
 		public static async Task<StateResponse> GetMatchState (StateRequest request)
