@@ -165,6 +165,9 @@ namespace Kalkatos.FunctionsGame.Registry
 							hash = hash * 31 + c;
 					}
 				}
+				hash *= 31 + TurnNumber;
+				if (IsMatchEnded)
+					hash *= 31;
 			}
 		}
 	}
