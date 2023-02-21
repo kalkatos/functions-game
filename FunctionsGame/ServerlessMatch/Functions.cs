@@ -20,7 +20,7 @@ namespace Kalkatos.FunctionsGame
 		private const string consonantsLower = "bcdfghjklmnpqrstvwxz";
 		private const string vowels = "aeiouy";
 
-		// =========== Log In =================
+		// ================================= L O G I N ==========================================
 
 		public static async Task<LoginResponse> LogIn (LoginRequest request)
 		{
@@ -79,7 +79,7 @@ namespace Kalkatos.FunctionsGame
 			return new Response { Message = "Ok" };
 		}
 
-		// =========== Action =================
+		// ================================= A C T I O N ==========================================
 
 		public static async Task<ActionResponse> SendAction (ActionRequest request)
 		{
@@ -106,7 +106,7 @@ namespace Kalkatos.FunctionsGame
 			return new ActionResponse { AlteredState = newState.GetStateInfo(request.PlayerId) };
 		}
 
-		// =========== Match =================
+		// ================================= M A T C H ==========================================
 
 		public static async Task<MatchResponse> GetMatch (MatchRequest request)
 		{
@@ -141,6 +141,35 @@ namespace Kalkatos.FunctionsGame
 				Players = playerInfos
 			};
 		}
+
+		public static async Task DeleteMatch (string matchId)
+		{
+			Logger.LogWarning("   [DeleteMatch] " + matchId);
+			if (string.IsNullOrEmpty(matchId))
+				return;
+			await service.DeleteMatchmakingHistory(null, matchId);
+			await service.DeleteState(matchId);
+			await service.DeleteMatchRegistry(matchId);
+		}
+
+		// Temp
+		public static void VerifyMatch (string matchId)
+		{
+			_ = Task.Run(async () => { await service.ScheduleCheckMatch(game.Settings.FirstCheckMatchDelay * 1000, matchId, 0); });
+		}
+
+		public static async Task CheckMatch (string matchId, int lastHash)
+		{
+			StateRegistry state = await service.GetState(matchId);
+			if (state == null)
+				return;
+			if (!HasHandshakingFromAllPlayers(state) || state.Hash == lastHash)
+				await DeleteMatch(matchId);
+			else
+				await service.ScheduleCheckMatch(game.Settings.RecurrentCheckMatchDelay * 1000, matchId, state.Hash);
+		}
+
+		// ================================= S T A T E ==========================================
 
 		public static async Task<StateResponse> GetMatchState (StateRequest request)
 		{
@@ -179,40 +208,13 @@ namespace Kalkatos.FunctionsGame
 			return new StateResponse { IsError = true, Message = "Match is in an unknown state." };
 		}
 
-		public static async Task DeleteMatch (string matchId)
-		{
-			Logger.LogWarning("   [DeleteMatch] " + matchId);
-			if (string.IsNullOrEmpty(matchId))
-				return;
-			await service.DeleteMatchmakingHistory(null, matchId);
-			await service.DeleteState(matchId);
-			await service.DeleteMatchRegistry(matchId);
-		}
-
-		// Temp
-		public static void VerifyMatch (string matchId)
-		{
-			_ = Task.Run(async () => { await service.ScheduleCheckMatch(game.Settings.FirstCheckMatchDelay * 1000, matchId, 0); });
-		}
-
 		// Temp
 		public static void CreateFirstState (MatchRegistry match)
 		{
 			_ = Task.Run(async () => await CreateFirstStateAndRegister(match));
 		}
 
-		public static async Task CheckMatch (string matchId, int lastHash)
-		{
-			StateRegistry state = await service.GetState(matchId);
-			if (state == null)
-				return;
-			if (!HasHandshakingFromAllPlayers(state) || state.Hash == lastHash)
-				await DeleteMatch(matchId);
-			else
-				await service.ScheduleCheckMatch(game.Settings.RecurrentCheckMatchDelay * 1000, matchId, state.Hash);
-		}
-
-		// ===========  P R I V A T E  =================
+		// ================================= P R I V A T E ==========================================
 
 		private static async Task<StateRegistry> CreateFirstStateAndRegister (MatchRegistry match)
 		{
@@ -252,6 +254,7 @@ namespace Kalkatos.FunctionsGame
 			return count == players.Length;
 		}
 
+		// Temporarily public
 		public static string CreateBotNickname ()
 		{
 			string result = "";

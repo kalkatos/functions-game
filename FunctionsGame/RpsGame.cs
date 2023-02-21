@@ -134,7 +134,7 @@ namespace Kalkatos.FunctionsGame.Rps
 			if (settings.ContainsKey(playPhaseStartDelayKey))
 				playPhaseStartDelay = int.Parse(settings[playPhaseStartDelayKey]);
 			if (settings.ContainsKey(turnDurationKey))
-				turnDuration = int.Parse(settings[turnDurationKey]);
+				turnDuration = int.Parse(settings[turnDurationKey]) + 2;
 			if (settings.ContainsKey(endTurnDelayKey))
 				endTurnDelay = int.Parse(settings[endTurnDelayKey]);
 			if (settings.ContainsKey(targetVictoryPointsKey))

@@ -14,7 +14,7 @@ namespace Kalkatos.FunctionsGame.Azure
 
 	public class AzureService : IService
 	{
-		// Game
+		// ================================= G A M E ==========================================
 
 		public async Task<GameRegistry> GetGameConfig (string gameId)
 		{
@@ -25,7 +25,7 @@ namespace Kalkatos.FunctionsGame.Azure
 			return null;
 		}
 
-		// Log In
+		// ================================= L O G I N ==========================================
 
 		public async Task<string> GetPlayerId (string deviceId)
 		{
@@ -66,7 +66,7 @@ namespace Kalkatos.FunctionsGame.Azure
 				await playerBlob.DeleteAsync();
 		}
 
-		// Matchmaking
+		// ================================= M A T C H M A K I N G ==========================================
 
 		public async Task<MatchmakingEntry[]> GetMatchmakingEntries (string region, string playerId, string matchId, MatchmakingStatus status)
 		{
@@ -100,7 +100,7 @@ namespace Kalkatos.FunctionsGame.Azure
 				await matchmakingTable.DeleteEntityAsync(item.PartitionKey, item.RowKey);
 		}
 
-		// Match
+		// ================================= M A T C H ==========================================
 
 		public async Task<MatchRegistry> GetMatchRegistry (string matchId)
 		{
@@ -141,7 +141,7 @@ namespace Kalkatos.FunctionsGame.Azure
 			await checkMatchQueue.SendMessageAsync(Convert.ToBase64String(bytes), TimeSpan.FromMilliseconds(millisecondsDelay));
 		}
 
-		// State
+		// ================================= S T A T E ==========================================
 
 		public async Task<StateRegistry> GetState (string matchId)
 		{
@@ -168,7 +168,7 @@ namespace Kalkatos.FunctionsGame.Azure
 				}
 				catch
 				{
-					Logger.LogWarning("   [SetState] Retrying set");
+					Logger.LogError("   [SetState] Retrying set");
 					await Task.Delay(100);
 				}
 			}
