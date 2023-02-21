@@ -143,13 +143,15 @@ namespace Kalkatos.FunctionsGame.Rps
 
 		private DateTime ExtractTime (string key, StateRegistry state)
 		{
-			if (state.HasPublicProperty(key) && DateTime.TryParse(state.GetPublic(key), out DateTime time))
+			if (state != null && state.HasPublicProperty(key) && DateTime.TryParse(state.GetPublic(key), out DateTime time))
 				return time.ToUniversalTime();
 			return default;
 		}
 
 		private bool IsInPlayPhase (StateRegistry state)
 		{
+			if (state == null)
+				return false;
 			return DateTime.UtcNow > ExtractTime(playPhaseStartTimeKey, state) && DateTime.UtcNow < ExtractTime(playPhaseEndTimeKey, state);
 		}
 
