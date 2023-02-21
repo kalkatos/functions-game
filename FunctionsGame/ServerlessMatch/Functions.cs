@@ -27,7 +27,6 @@ namespace Kalkatos.FunctionsGame
 			if (string.IsNullOrEmpty(request.Identifier) || string.IsNullOrEmpty(request.GameId))
 				return new LoginResponse { IsError = true, Message = "Identifier is null. Must be an unique user identifier." };
 
-			game.Settings = await service.GetGameConfig(request.GameId);
 			PlayerRegistry playerRegistry;
 			string playerId = await service.GetPlayerId(request.Identifier);
 			if (string.IsNullOrEmpty(playerId))
@@ -155,7 +154,11 @@ namespace Kalkatos.FunctionsGame
 		// Temp
 		public static void VerifyMatch (string matchId)
 		{
-			_ = Task.Run(async () => { await service.ScheduleCheckMatch(game.Settings.FirstCheckMatchDelay * 1000, matchId, 0); });
+			_ = Task.Run(async () => 
+			{
+				GameRegistry gameRegistry = await service.GetGameConfig(game.GameId);
+				await service.ScheduleCheckMatch(gameRegistry.FirstCheckMatchDelay * 1000, matchId, 0); 
+			});
 		}
 
 		public static async Task CheckMatch (string matchId, int lastHash)
@@ -166,7 +169,10 @@ namespace Kalkatos.FunctionsGame
 			if (!HasHandshakingFromAllPlayers(state) || state.Hash == lastHash)
 				await DeleteMatch(matchId);
 			else
-				await service.ScheduleCheckMatch(game.Settings.RecurrentCheckMatchDelay * 1000, matchId, state.Hash);
+			{
+				GameRegistry gameRegistry = await service.GetGameConfig(game.GameId);
+				await service.ScheduleCheckMatch(gameRegistry.RecurrentCheckMatchDelay * 1000, matchId, state.Hash); 
+			}
 		}
 
 		// ================================= S T A T E ==========================================
@@ -228,12 +234,13 @@ namespace Kalkatos.FunctionsGame
 			if (lastState == null)
 				Logger.LogError("   [PrepareTurn] Last state should not be null.");
 			StateRegistry newState = game.PrepareTurn(match, lastState);
-			if (newState.IsMatchEnded)
+			if (newState.IsMatchEnded && match.Status != (int)MatchStatus.Ended)
 			{
 				match.Status = (int)MatchStatus.Ended;
 				await service.SetMatchRegistry(match);
 				await service.SetState(match.MatchId, newState);
-				await service.ScheduleCheckMatch(game.Settings.FinalCheckMatchDelay * 1000, match.MatchId, newState.Hash);
+				GameRegistry gameRegistry = await service.GetGameConfig(game.GameId);
+				await service.ScheduleCheckMatch(gameRegistry.FinalCheckMatchDelay * 1000, match.MatchId, newState.Hash);
 				return newState;
 			}
 			if (lastState != null && newState.Hash == lastState.Hash)

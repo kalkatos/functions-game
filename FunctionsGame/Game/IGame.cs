@@ -7,7 +7,6 @@ namespace Kalkatos.FunctionsGame
 	public interface IGame
 	{
 		string GameId { get; }
-		GameRegistry Settings { get; set; } 
 		bool IsActionAllowed (string playerId, StateInfo stateChanges, MatchRegistry match, StateRegistry state);
 		StateRegistry CreateFirstState (MatchRegistry match);
 		StateRegistry PrepareTurn (MatchRegistry match, StateRegistry lastState);
