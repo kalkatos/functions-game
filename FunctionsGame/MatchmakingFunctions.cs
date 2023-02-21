@@ -43,39 +43,20 @@ namespace Kalkatos.FunctionsGame
 
 			// Check if there is an entry in matchmaking for this player, if not add one
 			TableClient matchmakingTable = new TableClient(connectionString, "Matchmaking");
-			var playerQuery = matchmakingTable.QueryAsync<PlayerLookForMatchEntity>((entity) => entity.PartitionKey == playerRegion && entity.RowKey == playerId);
-			var playerQueryEnumerator = playerQuery.GetAsyncEnumerator();
-			if (!await playerQueryEnumerator.MoveNextAsync())
+			var playerQuery = matchmakingTable.Query<PlayerLookForMatchEntity>((entity) => entity.PartitionKey == playerRegion && entity.RowKey == playerId);
+			if (playerQuery.Count() > 0)
 			{
-				log.LogWarning($"   [{nameof(FindMatch)}] No matchmaking registered for player. Registering...");
-				await matchmakingTable.AddEntityAsync(new PlayerLookForMatchEntity
-				{
-					PartitionKey = playerRegion,
-					RowKey = playerId,
-					PlayerInfoSerialized = JsonConvert.SerializeObject(playerRegistry.Info),
-					Status = (int)MatchmakingStatus.Searching
-				});
+				log.LogWarning($"   [{nameof(FindMatch)}] Found previous matchmaking entries...");
+				foreach (var item in playerQuery)
+					await matchmakingTable.DeleteEntityAsync(item.PartitionKey, item.RowKey, item.ETag);
 			}
-			else
+			await matchmakingTable.AddEntityAsync(new PlayerLookForMatchEntity
 			{
-				log.LogWarning($"   [{nameof(FindMatch)}] There is an entry for this player in matchmaking table...");
-				PlayerLookForMatchEntity entry = playerQueryEnumerator.Current;
-				// TODO Check if the entry for this player is too old, case which we should get another one
-				switch (entry.Status)
-				{
-					case (int)MatchmakingStatus.Searching:
-					case (int)MatchmakingStatus.Matched:
-						log.LogWarning($"   [{nameof(FindMatch)}] Player is already registered for matchmaking.");
-						break;
-					case (int)MatchmakingStatus.Backfilling:
-						break;
-					default:
-						log.LogWarning($"   [{nameof(FindMatch)}] Renewing player matchmaking entry.");
-						playerQueryEnumerator.Current.Status = (int)MatchmakingStatus.Searching;
-						await matchmakingTable.UpdateEntityAsync(entry, entry.ETag, TableUpdateMode.Replace);
-						break;
-				}
-			}
+				PartitionKey = playerRegion,
+				RowKey = playerId,
+				PlayerInfoSerialized = JsonConvert.SerializeObject(playerRegistry.Info),
+				Status = (int)MatchmakingStatus.Searching
+			});
 
 			// Check orchestrator
 			string orchestratorId = $"Orchestrator-{playerRegion}";
