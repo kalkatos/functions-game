@@ -26,7 +26,8 @@ namespace Kalkatos.FunctionsGame
 		{
 			if (string.IsNullOrEmpty(request.Identifier) || string.IsNullOrEmpty(request.GameId))
 				return new LoginResponse { IsError = true, Message = "Identifier is null. Must be an unique user identifier." };
-
+			GameRegistry gameRegistry = await service.GetGameConfig(request.GameId);
+			game.SetSettings(gameRegistry);
 			PlayerRegistry playerRegistry;
 			string playerId = await service.GetPlayerId(request.Identifier);
 			if (string.IsNullOrEmpty(playerId))

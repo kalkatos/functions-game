@@ -22,9 +22,6 @@ namespace Kalkatos.FunctionsGame
 {
 	public static class MatchmakingFunctions
 	{
-		private static Random random = new Random();
-		
-
 		[FunctionName(nameof(FindMatch))]
 		public static async Task<string> FindMatch (
 			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string playerId,
@@ -334,8 +331,6 @@ namespace Kalkatos.FunctionsGame
 
 
 		#endregion =======================================================================================
-
-		
 		
 	}
 
