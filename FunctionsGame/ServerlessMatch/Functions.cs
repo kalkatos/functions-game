@@ -92,18 +92,36 @@ namespace Kalkatos.FunctionsGame
 				return new ActionResponse { IsError = true, Message = "Player is not on that match." };
 			if (match.Status == (int)MatchStatus.Ended)
 				return new ActionResponse { IsError = true, Message = "Match is over." };
+			CheckAction:
 			StateRegistry state = await service.GetState(request.MatchId);
-			if (!game.IsActionAllowed(request.PlayerId, request.Changes, match, state))
+			if (!game.IsActionAllowed(request.PlayerId, request.Action, match, state))
 				return new ActionResponse { IsError = true, Message = "Action is not allowed." };
+
+
+			//ActionRegistry actionRegistry = new ActionRegistry
+			//{
+			//	MatchId = request.MatchId,
+			//	PlayerId = request.PlayerId,
+			//	Action = request.Action,
+			//	StateHash = state.Hash,
+			//};
+			//await service.SetAction(request.PlayerId, request.MatchId, actionRegistry);
+
+
 			StateRegistry newState = state?.Clone() ?? await CreateFirstStateAndRegister(match);
-			if (request.Changes.PublicProperties != null)
-				newState.UpsertPublicProperties(request.Changes.PublicProperties);
-			if (request.Changes.PrivateProperties != null)
-				newState.UpsertPrivateProperties(request.PlayerId, request.Changes.PrivateProperties);
+			if (request.Action.PublicChanges != null)
+				newState.UpsertPublicProperties(request.Action.PublicChanges);
+			if (request.Action.PrivateChanges != null)
+				newState.UpsertPrivateProperties(request.PlayerId, request.Action.PrivateChanges);
 			if (state != null && state.Hash == newState.Hash)
 				return new ActionResponse { IsError = true, Message = "Action is already registered." };
-			await service.SetState(request.MatchId, newState);
-			return new ActionResponse { AlteredState = newState.GetStateInfo(request.PlayerId) };
+			if (!await service.SetState(request.MatchId, state, newState))
+			{
+				Logger.LogError("   [SendAction] States didn't match, retrying....");
+				goto CheckAction; 
+			}
+			Logger.LogWarning($"   [SendAction] State after action = {JsonConvert.SerializeObject(newState)}");
+			return new ActionResponse { AlteredState = newState.GetStateInfo(request.PlayerId), Message = "Action registered successfully." };
 		}
 
 		// ================================= M A T C H ==========================================
@@ -226,7 +244,7 @@ namespace Kalkatos.FunctionsGame
 		private static async Task<StateRegistry> CreateFirstStateAndRegister (MatchRegistry match)
 		{
 			StateRegistry newState = game.CreateFirstState(match);
-			await service.SetState(match.MatchId, newState);
+			await service.SetState(match.MatchId, null, newState);
 			return newState;
 		}
 
@@ -239,14 +257,22 @@ namespace Kalkatos.FunctionsGame
 			{
 				match.Status = (int)MatchStatus.Ended;
 				await service.SetMatchRegistry(match);
-				await service.SetState(match.MatchId, newState);
+				if (!await service.SetState(match.MatchId, lastState, newState))
+				{
+					Logger.LogError("   [PrepareTurn] States didn't match, retrying....");
+					return await PrepareTurn(match, await service.GetState(match.MatchId)); 
+				}
 				GameRegistry gameRegistry = await service.GetGameConfig(game.GameId);
 				await service.ScheduleCheckMatch(gameRegistry.FinalCheckMatchDelay * 1000, match.MatchId, newState.Hash);
 				return newState;
 			}
 			if (lastState != null && newState.Hash == lastState.Hash)
 				return lastState;
-			await service.SetState(match.MatchId, newState);
+			if (!await service.SetState(match.MatchId, lastState, newState))
+			{
+				Logger.LogError("   [PrepareTurn] States didn't match, retrying....");
+				return await PrepareTurn(match, await service.GetState(match.MatchId)); 
+			}
 			return newState;
 		}
 
@@ -292,13 +318,17 @@ namespace Kalkatos.FunctionsGame
 		// Matchmaking
 		Task<MatchmakingEntry[]> GetMatchmakingEntries (string region, string playerId, string matchId, MatchmakingStatus status);
 		Task DeleteMatchmakingHistory (string playerId, string matchId);
+		// Action
+		//Task<ActionRegistry> GetAction (string playerId, string matchId);
+		//Task SetAction (string playerId, string matchId, ActionRegistry action);
+		//Task DeleteAction (string playerId, string matchId);
 		// Match
 		Task<MatchRegistry> GetMatchRegistry (string matchId);
 		Task SetMatchRegistry (MatchRegistry matchRegistry);
 		Task DeleteMatchRegistry (string matchId);
 		// States
 		Task<StateRegistry> GetState (string matchId);
-		Task SetState (string matchId, StateRegistry state);
+		Task<bool> SetState (string matchId, StateRegistry oldState, StateRegistry newState);
 		Task DeleteState (string matchId);
 		// General
 		Task ScheduleCheckMatch (int millisecondsDelay, string matchId, int lastHash);

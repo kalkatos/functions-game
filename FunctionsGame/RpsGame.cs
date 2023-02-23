@@ -48,12 +48,12 @@ namespace Kalkatos.FunctionsGame.Rps
 				targetVictoryPoints = int.Parse(settings[targetVictoryPointsKey]);
 		}
 
-		public bool IsActionAllowed (string playerId, StateInfo stateChanges, MatchRegistry match, StateRegistry state)
+		public bool IsActionAllowed (string playerId, ActionInfo action, MatchRegistry match, StateRegistry state)
 		{
-			bool result = !stateChanges.HasAnyPublicProperty();
-			result &= stateChanges.OnlyHasThesePrivateProperties(handshakingKey, myMoveKey);
+			bool result = !action.HasAnyPublicChange();
+			result &= action.OnlyHasThesePrivateChanges(handshakingKey, myMoveKey);
 			if (IsInPlayPhase(state))
-				result &= stateChanges.IsPrivatePropertyEqualsIfPresent(myMoveKey, allowedMoves);
+				result &= action.IsPrivateChangeEqualsIfPresent(myMoveKey, allowedMoves);
 			return result;
 		}
 

@@ -154,24 +154,35 @@ namespace Kalkatos.FunctionsGame.Azure
 			return state;
 		}
 
-		public async Task SetState (string matchId, StateRegistry state)
+		public async Task<bool> SetState (string matchId, StateRegistry oldState, StateRegistry newState)
 		{
+			//QueueClient queue = new QueueClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "set-state");
+			//string message = $"{matchId}|{JsonConvert.SerializeObject(state)}";
+			//var bytes = Encoding.UTF8.GetBytes(message);
+			//await queue.SendMessageAsync(Convert.ToBase64String(bytes));
+
 			BlockBlobClient stateBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "states", $"{matchId}.json");
 			bool stateSetSuccessfully = false;
 			while (!stateSetSuccessfully)
 			{
 				try
 				{
+					StateRegistry stateRegistry = await GetState(matchId);
+					if (stateRegistry != null && oldState != null && oldState.Hash != stateRegistry.Hash)
+					{
+						Logger.LogError($"   [SetState] states don't match ===\n old - {JsonConvert.SerializeObject(oldState, Formatting.Indented)}\n saved - {JsonConvert.SerializeObject(stateRegistry, Formatting.Indented)}");
+						return false;
+					}
 					using (Stream stream = await stateBlob.OpenWriteAsync(true))
-						stream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(state)));
+						stream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(newState)));
 					stateSetSuccessfully = true;
 				}
 				catch
 				{
-					Logger.LogError("   [SetState] Retrying set");
-					await Task.Delay(100);
+					return false;
 				}
 			}
+			return true;
 		}
 
 		public async Task DeleteState (string matchId)
