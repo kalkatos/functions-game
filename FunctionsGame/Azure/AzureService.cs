@@ -150,6 +150,8 @@ namespace Kalkatos.FunctionsGame.Azure
 			if (await stateBlob.ExistsAsync())
 				using (Stream stream = await stateBlob.OpenReadAsync())
 					state = JsonConvert.DeserializeObject<StateRegistry>(Helper.ReadBytes(stream));
+			else
+				Logger.LogError($"   [GetState] State does not exist.");
 			state?.UpdateHash();
 			return state;
 		}

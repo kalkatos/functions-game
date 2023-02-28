@@ -92,33 +92,35 @@ namespace Kalkatos.FunctionsGame
 				return new ActionResponse { IsError = true, Message = "Player is not on that match." };
 			if (match.Status == (int)MatchStatus.Ended)
 				return new ActionResponse { IsError = true, Message = "Match is over." };
-			CheckAction:
-			StateRegistry state = await service.GetState(request.MatchId);
-			if (!game.IsActionAllowed(request.PlayerId, request.Action, match, state))
-				return new ActionResponse { IsError = true, Message = "Action is not allowed." };
-
-
-			//ActionRegistry actionRegistry = new ActionRegistry
-			//{
-			//	MatchId = request.MatchId,
-			//	PlayerId = request.PlayerId,
-			//	Action = request.Action,
-			//	StateHash = state.Hash,
-			//};
-			//await service.SetAction(request.PlayerId, request.MatchId, actionRegistry);
-
-
-			StateRegistry newState = state?.Clone() ?? await CreateFirstStateAndRegister(match);
-			if (request.Action.PublicChanges != null)
-				newState.UpsertPublicProperties(request.Action.PublicChanges);
-			if (request.Action.PrivateChanges != null)
-				newState.UpsertPrivateProperties(request.PlayerId, request.Action.PrivateChanges);
-			if (state != null && state.Hash == newState.Hash)
-				return new ActionResponse { IsError = true, Message = "Action is already registered." };
-			if (!await service.SetState(request.MatchId, state, newState))
+			StateRegistry newState = null;
+			for (int attempt = 0; attempt <= 5; ++attempt)
 			{
-				Logger.LogError("   [SendAction] States didn't match, retrying....");
-				goto CheckAction; 
+				if (attempt >= 5)
+					return new ActionResponse { IsError = true, Message = "Max attempts to Send Action reached." };
+				StateRegistry state = await service.GetState(request.MatchId);
+				if (state == null)
+				{
+					Logger.LogError("   [SendAction] State came out null. Retrying...");
+					continue;
+				}
+				if (!game.IsActionAllowed(request.PlayerId, request.Action, match, state))
+					return new ActionResponse { IsError = true, Message = "Action is not allowed." };
+				newState = state.Clone();
+				if (request.Action.PublicChanges != null)
+					newState.UpsertPublicProperties(request.Action.PublicChanges);
+				if (request.Action.PrivateChanges != null)
+					newState.UpsertPrivateProperties(request.PlayerId, request.Action.PrivateChanges);
+				if (state != null && state.Hash == newState.Hash)
+				{
+					Logger.LogError($"   [SendAction] state hash and newState hash are equal:\n>> State = {JsonConvert.SerializeObject(state)}\n\n>> NewState = {JsonConvert.SerializeObject(newState)}");
+					return new ActionResponse { IsError = true, Message = "Action is already registered." };
+				}
+				if (!await service.SetState(request.MatchId, state, newState))
+				{
+					Logger.LogError("   [SendAction] States didn't match, retrying....");
+					continue;
+				}
+				break;
 			}
 			Logger.LogWarning($"   [SendAction] State after action = {JsonConvert.SerializeObject(newState)}");
 			return new ActionResponse { AlteredState = newState.GetStateInfo(request.PlayerId), Message = "Action registered successfully." };
@@ -279,12 +281,21 @@ namespace Kalkatos.FunctionsGame
 		private static bool HasHandshakingFromAllPlayers (StateRegistry state)
 		{
 			if (state == null)
+			{
+				Logger.LogError($"   [HasHandshakingFromAllPlayers] State is null");
 				return false;
+			}
 			var players = state.GetPlayers();
 			int count = 0;
+			string playersWithHandshaking = "";
 			foreach (var player in players)
 				if (player[0] == 'X' || !string.IsNullOrEmpty(state.GetPrivate(player, "Handshaking")))
+				{
 					count++;
+					playersWithHandshaking += $"| {player}";
+				}
+			if (count != players.Length)
+				Logger.LogError($"   [HasHandshakingFromAllPlayers] Player with handshaking = {count} = {playersWithHandshaking}\n{JsonConvert.SerializeObject(state)}");
 			return count == players.Length;
 		}
 
