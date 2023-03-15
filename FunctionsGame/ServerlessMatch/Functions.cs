@@ -73,6 +73,8 @@ namespace Kalkatos.FunctionsGame
 				playerRegistry.Info.Nickname = request.Data["Nickname"];
 				request.Data.Remove("Nickname");
 			}
+			if (playerRegistry.Info.CustomData == null)
+				playerRegistry.Info.CustomData = new System.Collections.Generic.Dictionary<string, string>();
 			foreach (var item in request.Data)
 				playerRegistry.Info.CustomData[item.Key] = item.Value;
 			await service.SetPlayerRegistry(playerRegistry);
