@@ -1,5 +1,4 @@
-﻿using Kalkatos.FunctionsGame;
-using Kalkatos.FunctionsGame.Game.Rps;
+﻿using Kalkatos.FunctionsGame.Rps;
 using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
 using Newtonsoft.Json;
@@ -19,9 +18,9 @@ MatchRegistry match = new MatchRegistry
 
 StateRegistry state = game.PrepareTurn(match, null);
 
-Console.WriteLine(game.IsActionAllowed("Player1", new StateInfo
+Console.WriteLine(game.IsActionAllowed("Player1", new ActionInfo
 {
-	PrivateProperties = new Dictionary<string, string> { { "Handshaking", "1" } }
+	PrivateChanges = new Dictionary<string, string> { { "Handshaking", "1" } }
 }, match, state));
 
 Random rand = new Random();
@@ -38,9 +37,9 @@ while (true)
 		break;
 	if (key.Key == ConsoleKey.V)
 	{
-		Console.WriteLine("Trying to send action: " + game.IsActionAllowed("Player1", new StateInfo
+		Console.WriteLine("Trying to send action: " + game.IsActionAllowed("Player1", new ActionInfo
 		{
-			PrivateProperties = new Dictionary<string, string> { { "MyMove", "ROCK" } }
+			PrivateChanges = new Dictionary<string, string> { { "MyMove", "ROCK" } }
 		}, match, state));
 	}
 	state = game.PrepareTurn(match, state);

@@ -46,7 +46,7 @@ namespace Kalkatos.FunctionsGame.Registry
 			{
 				PublicProperties = publicPropertiesClone,
 				PrivateProperties = privatePropertiesClone,
-				Hash = Hash
+				Hash = GetHash(publicPropertiesClone, privatePropertiesClone)
 			};
 			return stateInfo;
 		}
@@ -145,26 +145,30 @@ namespace Kalkatos.FunctionsGame.Registry
 
 		public void UpdateHash ()
 		{
+			Dictionary<string, string>[] dictionaries = new Dictionary<string, string>[privateProperties.Count + 1];
+			dictionaries[0] = publicProperties;
+			int index = 1;
+			foreach (var item in privateProperties)
+				dictionaries[index++] = item.Value;
+			hash = GetHash(dictionaries);
+		}
+
+		public int GetHash (params Dictionary<string, string>[] dicts)
+		{
 			unchecked
 			{
-				hash = 23;
-				foreach (var item in publicProperties)
+				int hash = 23;
+				foreach (var dict in dicts)
 				{
-					foreach (char c in item.Key)
-						hash = hash * 31 + c;
-					foreach (char c in item.Value)
-						hash = hash * 31 + c;
-				}
-				foreach (var playerProperty in privateProperties)
-				{
-					foreach (var playerState in playerProperty.Value)
+					foreach (var item in dict)
 					{
-						foreach (char c in playerState.Key)
+						foreach (char c in item.Key)
 							hash = hash * 31 + c;
-						foreach (char c in playerState.Value)
+						foreach (char c in item.Value)
 							hash = hash * 31 + c;
 					}
 				}
+				return hash;
 			}
 		}
 	}
