@@ -4,6 +4,7 @@ using Azure.Storage.Queues;
 using Kalkatos.FunctionsGame.Registry;
 using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -196,6 +197,20 @@ namespace Kalkatos.FunctionsGame.Azure
 					await statesBlob.DeleteAsync();
 			} 
 			catch { }
+		}
+
+		public async Task<bool> GetBool (string key)
+		{
+			BlockBlobClient dataBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "rules", "data.json");
+			Dictionary<string, string> dataDict = null;
+			if (await dataBlob.ExistsAsync())
+				using (Stream stream = await dataBlob.OpenReadAsync())
+				{
+					dataDict = JsonConvert.DeserializeObject<Dictionary<string, string>>(Helper.ReadBytes(stream));
+					if (dataDict.ContainsKey(key))
+						return dataDict[key] == "1";
+				}
+			return false;
 		}
 	}
 }

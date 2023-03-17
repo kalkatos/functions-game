@@ -50,11 +50,14 @@ namespace Kalkatos.FunctionsGame
 			else
 				playerRegistry = await service.GetPlayerRegistry(playerId);
 
+			bool mustRunLocally = await service.GetBool("MustRunLocally");
+
 			return new LoginResponse
 			{
 				IsAuthenticated = playerRegistry.IsAuthenticated,
 				PlayerId = playerRegistry.PlayerId,
-				MyInfo = playerRegistry.Info
+				MyInfo = playerRegistry.Info,
+				MustRunLocally = mustRunLocally
 			};
 		}
 
@@ -344,5 +347,6 @@ namespace Kalkatos.FunctionsGame
 		Task DeleteState (string matchId);
 		// General
 		Task ScheduleCheckMatch (int millisecondsDelay, string matchId, int lastHash);
+		Task<bool> GetBool (string key);
 	}
 }
