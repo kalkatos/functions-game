@@ -70,7 +70,7 @@ namespace Kalkatos.FunctionsGame.Rps
 			return newState;
 		}
 
-		public StateRegistry PrepareTurn (MatchRegistry match, StateRegistry lastState)
+		public StateRegistry PrepareTurn (string playerId, MatchRegistry match, StateRegistry lastState)
 		{
 			StateRegistry newState = lastState.Clone();
 			DateTime utcNow = DateTime.UtcNow;
@@ -160,18 +160,23 @@ namespace Kalkatos.FunctionsGame.Rps
 			int turnWinner = GetWinner(p1Move, p2Move);
 			int p1Score = int.Parse(state.GetPrivate(playerList[0], myScoreKey)) + Math.Max(turnWinner * -1, 0);
 			int p2Score = int.Parse(state.GetPrivate(playerList[1], myScoreKey)) + Math.Max(turnWinner, 0);
-			state.UpsertPrivateProperties(
-				(playerList[0], opponentMoveKey, p2Move),
-				(playerList[1], opponentMoveKey, p1Move),
-				(playerList[0], turnWinnerKey, turnWinner == 1 ? "Opponent" : turnWinner == 0 ? "Tie" : "Me"),
-				(playerList[1], turnWinnerKey, turnWinner == 1 ? "Me" : turnWinner == 0 ? "Tie" : "Opponent"),
-				(playerList[0], myScoreKey, p1Score.ToString()),
-				(playerList[1], myScoreKey, p2Score.ToString()),
-				(playerList[0], opponentScoreKey, p2Score.ToString()),
-				(playerList[1], opponentScoreKey, p1Score.ToString()));
-			state.UpsertPublicProperties(
-				(phaseKey, ((int)Phase.Result).ToString()),
-				(turnEndTimeKey, DateTime.UtcNow.AddSeconds(endTurnDelay).ToString("u")));
+			state.UpsertProperties(
+				idPrivateProperties: new(string id, string key, string value)[]
+				{
+					(playerList[0], opponentMoveKey, p2Move),
+					(playerList[1], opponentMoveKey, p1Move),
+					(playerList[0], turnWinnerKey, turnWinner == 1 ? "Opponent" : turnWinner == 0 ? "Tie" : "Me"),
+					(playerList[1], turnWinnerKey, turnWinner == 1 ? "Me" : turnWinner == 0 ? "Tie" : "Opponent"),
+					(playerList[0], myScoreKey, p1Score.ToString()),
+					(playerList[1], myScoreKey, p2Score.ToString()),
+					(playerList[0], opponentScoreKey, p2Score.ToString()),
+					(playerList[1], opponentScoreKey, p1Score.ToString())
+				},
+				publicProperties: new (string key, string value)[]
+				{
+					(phaseKey, ((int)Phase.Result).ToString()),
+					(turnEndTimeKey, DateTime.UtcNow.AddSeconds(endTurnDelay).ToString("u"))
+				});
 
 			int GetWinner (string move1, string move2)
 			{
@@ -230,10 +235,13 @@ namespace Kalkatos.FunctionsGame.Rps
 			if (matchWinner != 0)
 			{
 				state.IsMatchEnded = true;
-				state.UpsertPrivateProperties(
-					(playerList[0], matchWinnerKey, matchWinner == 1 ? "Opponent" : "Me"),
-					(playerList[1], matchWinnerKey, matchWinner == 1 ? "Me" : "Opponent"));
-				state.UpsertPublicProperties((phaseKey, ((int)Phase.Ended).ToString()));
+				state.UpsertProperties(
+					idPrivateProperties: new (string id, string key, string value)[]
+					{
+						(playerList[0], matchWinnerKey, matchWinner == 1 ? "Opponent" : "Me"),
+						(playerList[1], matchWinnerKey, matchWinner == 1 ? "Me" : "Opponent")
+					},
+					publicProperties: new (string key, string value)[] { (phaseKey, ((int)Phase.Ended).ToString()) });
 			}
 		}
 
