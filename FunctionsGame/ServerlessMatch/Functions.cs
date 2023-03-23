@@ -220,14 +220,14 @@ namespace Kalkatos.FunctionsGame
 					match.Status = (int)MatchStatus.Started;
 					match.StartTime = DateTime.UtcNow;
 					await service.SetMatchRegistry(match);
-					currentState = await PrepareTurn (match, currentState);
+					currentState = await PrepareTurn (request.PlayerId, match, currentState);
 
 					Logger.LogWarning("   [GetMatchState] StateRegistry = = " + JsonConvert.SerializeObject(currentState));
 
 					return new StateResponse { StateInfo = currentState.GetStateInfo(request.PlayerId) };
 				case (int)MatchStatus.Started:
 				case (int)MatchStatus.Ended:
-					currentState = await PrepareTurn(match, currentState);
+					currentState = await PrepareTurn(request.PlayerId, match, currentState);
 					StateInfo info = currentState.GetStateInfo(request.PlayerId);
 					if (info.Hash == request.LastHash)
 						return new StateResponse { IsError = true, Message = "Current state is the same known state." };
@@ -254,11 +254,11 @@ namespace Kalkatos.FunctionsGame
 			return newState;
 		}
 
-		private static async Task<StateRegistry> PrepareTurn (MatchRegistry match, StateRegistry lastState)
+		private static async Task<StateRegistry> PrepareTurn (string requesterId, MatchRegistry match, StateRegistry lastState)
 		{
 			if (lastState == null)
 				Logger.LogError("   [PrepareTurn] Last state should not be null.");
-			StateRegistry newState = game.PrepareTurn(match, lastState);
+			StateRegistry newState = game.PrepareTurn(requesterId, match, lastState);
 			if (newState.IsMatchEnded && match.Status != (int)MatchStatus.Ended)
 			{
 				match.Status = (int)MatchStatus.Ended;
@@ -266,7 +266,7 @@ namespace Kalkatos.FunctionsGame
 				if (!await service.SetState(match.MatchId, lastState, newState))
 				{
 					Logger.LogError("   [PrepareTurn] States didn't match, retrying....");
-					return await PrepareTurn(match, await service.GetState(match.MatchId)); 
+					return await PrepareTurn(requesterId, match, await service.GetState(match.MatchId)); 
 				}
 				GameRegistry gameRegistry = await service.GetGameConfig(game.GameId);
 				await service.ScheduleCheckMatch(gameRegistry.FinalCheckMatchDelay * 1000, match.MatchId, newState.Hash);
@@ -277,7 +277,7 @@ namespace Kalkatos.FunctionsGame
 			if (!await service.SetState(match.MatchId, lastState, newState))
 			{
 				Logger.LogError("   [PrepareTurn] States didn't match, retrying....");
-				return await PrepareTurn(match, await service.GetState(match.MatchId)); 
+				return await PrepareTurn(requesterId, match, await service.GetState(match.MatchId)); 
 			}
 			return newState;
 		}
