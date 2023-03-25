@@ -25,10 +25,8 @@ namespace Kalkatos.FunctionsGame.Rps
 		private const string handshakingKey = "Handshaking";
 		private const string myMoveKey = "MyMove";
 		private const string turnResultSyncKey = "TurnResultSync";
-
 		private const string turnStartedTimeKey = "TurnStartedTime";
 		private const string turnEndedTimeKey = "TurnEndedTime";
-
 		private const string opponentMoveKey = "OpponentMove";
 		private const string turnWinnerKey = "TurnWinner";
 		private const string matchWinnerKey = "MatchWinner";
@@ -173,7 +171,6 @@ namespace Kalkatos.FunctionsGame.Rps
 
 		private bool HasBothPlayersGotResult (StateRegistry state)
 		{
-			Logger.LogWarning($"State when checking who got result: {JsonConvert.SerializeObject(state, Formatting.Indented)}");
 			foreach (var id in state.GetPlayers())
 			{
 				if (id[0] == 'X')
