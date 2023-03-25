@@ -10,6 +10,6 @@ namespace Kalkatos.FunctionsGame
 		void SetSettings (GameRegistry settings);
 		bool IsActionAllowed (string playerId, ActionInfo action, MatchRegistry match, StateRegistry state);
 		StateRegistry CreateFirstState (MatchRegistry match);
-		StateRegistry PrepareTurn (MatchRegistry match, StateRegistry lastState);
+		StateRegistry PrepareTurn (string playerId, MatchRegistry match, StateRegistry lastState);
 	}
 }

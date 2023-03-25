@@ -115,6 +115,21 @@ namespace Kalkatos.FunctionsGame.Registry
 			UpdateHash();
 		}
 
+		public void UpsertProperties ((string key, string value)[] allPrivateProperties = null, (string id, string key, string value)[] idPrivateProperties = null, (string key, string value)[] publicProperties = null)
+		{
+			if (allPrivateProperties != null)
+				foreach (var prop in privateProperties)
+					foreach (var kv in allPrivateProperties)
+						prop.Value[kv.key] = kv.value;
+			if (idPrivateProperties != null)
+				foreach (var item in idPrivateProperties)
+					privateProperties[item.id][item.key] = item.value;
+			if (publicProperties != null)
+				foreach (var item in publicProperties)
+					this.publicProperties[item.key] = item.value;
+			UpdateHash();
+		}
+
 		public void UpsertPrivateProperties (params (string id, string key, string value)[] idKeyAndValue)
 		{
 			foreach (var item in idKeyAndValue)

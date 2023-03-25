@@ -16,7 +16,7 @@ MatchRegistry match = new MatchRegistry
 	CreatedTime = DateTime.UtcNow,
 };
 
-StateRegistry state = game.PrepareTurn(match, null);
+StateRegistry state = game.PrepareTurn("Player1", match, null);
 
 Console.WriteLine(game.IsActionAllowed("Player1", new ActionInfo
 {
@@ -42,7 +42,7 @@ while (true)
 			PrivateChanges = new Dictionary<string, string> { { "MyMove", "ROCK" } }
 		}, match, state));
 	}
-	state = game.PrepareTurn(match, state);
+	state = game.PrepareTurn("Player1", match, state);
 	Console.WriteLine($"Execution: {executions} | Time: {DateTime.UtcNow}\n");
 	Console.WriteLine(JsonConvert.SerializeObject(state, Formatting.Indented));
 	Console.WriteLine("------------------------");
