@@ -134,25 +134,46 @@ namespace Kalkatos.FunctionsGame
 
 		// ================================= M A T C H ==========================================
 
+		public static async Task<Response> FindMatch (FindMatchRequest request)
+		{
+			if (request == null || string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.Region) || string.IsNullOrEmpty(request.GameId))
+				return new MatchResponse { IsError = true, Message = "Wrong Parameters." };
+			MatchmakingEntry[] entries = await service.GetMatchmakingEntries(request.Region, request.PlayerId, null, MatchmakingStatus.Undefined);
+			if (entries != null && entries.Length > 1)
+				foreach (MatchmakingEntry entry in entries)
+					await service.DeleteMatchmakingHistory(entry.PlayerId, entry.MatchId);
+			await service.UpsertMatchmakingEntry(request.Region, request.PlayerId, null, MatchmakingStatus.Searching, null);
+
+			await TryToMatchPlayers(request.GameId, request.Region);
+
+			return new Response { Message = "Find match request registered successfully." };
+		}
+
 		public static async Task<MatchResponse> GetMatch (MatchRequest request)
 		{
-			if (request == null || string.IsNullOrEmpty(request.PlayerId))
+			if (request == null || string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.Region) || string.IsNullOrEmpty(request.GameId))
 				return new MatchResponse { IsError = true, Message = "Wrong Parameters." };
 
 			if (string.IsNullOrEmpty(request.MatchId))
 			{
-				// Get the match id of the match to which that player is assigned in the matchmaking table
-				var entries = await service.GetMatchmakingEntries(null, request.PlayerId, null, MatchmakingStatus.Undefined);
-				if (entries == null || entries.Length == 0)
+				// Try to get entries two times 
+				for (int attempt = 1; attempt <= 2; attempt++)
+				{
+					// Get the match id of the match assigned to the player or find matches
+					MatchmakingEntry[] entries = await service.GetMatchmakingEntries(null, request.PlayerId, null, MatchmakingStatus.Undefined);
+					if (entries == null || entries.Length == 0)
+						return new MatchResponse { IsError = true, Message = $"Didn't find any match for player." };
+					if (entries.Length > 1)
+						Logger.LogWarning($"[{nameof(GetMatch)}] More than one entry in matchmaking found! Player = {request.PlayerId} Query = {entries}");
+					var playerEntry = entries[0];
+					if (attempt == 1 && string.IsNullOrEmpty(playerEntry.MatchId))
+						await TryToMatchPlayers(request.GameId, request.GameId);
+					else
+						request.MatchId = playerEntry.MatchId;
+				}
+				if (string.IsNullOrEmpty(request.MatchId))
 					return new MatchResponse { IsError = true, Message = $"Didn't find any match for player." };
-				if (entries.Length > 1)
-					Logger.LogWarning($"[{nameof(GetMatch)}] More than one entry in matchmaking found! Player = {request.PlayerId} Query = {entries}");
-
-				var playerEntry = entries[0];
-				request.MatchId = playerEntry.MatchId;
-				Logger.LogWarning($"   [{nameof(GetMatch)}] Found a match: {playerEntry.MatchId}");
 			}
-
 			MatchRegistry match = await service.GetMatchRegistry(request.MatchId);
 			if (match == null)
 				return new MatchResponse { IsError = true, Message = $"Match with id {request.MatchId} wasn't found." };
@@ -249,6 +270,16 @@ namespace Kalkatos.FunctionsGame
 
 		// ================================= P R I V A T E ==========================================
 
+		private static async Task<string> TryToMatchPlayers (string gameId, string region)
+		{
+			// TODO TryToMatchPlayers
+			// Get settings for matchmaking
+			// Get entries for that region
+			// If enough players, match them
+			// Else if entries are old enough and can match with bots, do so
+			return null;
+		}
+
 		private static async Task<StateRegistry> CreateFirstStateAndRegister (MatchRegistry match)
 		{
 			StateRegistry newState = game.CreateFirstState(match);
@@ -320,35 +351,5 @@ namespace Kalkatos.FunctionsGame
 			}
 			return "Guest-" + result;
 		}
-	}
-
-	public interface IService
-	{
-		// Game
-		Task<GameRegistry> GetGameConfig (string gameId);
-		// Log in
-		Task<string> GetPlayerId (string deviceId);
-		Task RegisterDeviceWithId (string deviceId, string playerId);
-		Task<PlayerRegistry> GetPlayerRegistry (string playerId);
-		Task SetPlayerRegistry (PlayerRegistry registry);
-		Task DeletePlayerRegistry (string playerId);
-		// Matchmaking
-		Task<MatchmakingEntry[]> GetMatchmakingEntries (string region, string playerId, string matchId, MatchmakingStatus status);
-		Task DeleteMatchmakingHistory (string playerId, string matchId);
-		// Action
-		//Task<ActionRegistry> GetAction (string playerId, string matchId);
-		//Task SetAction (string playerId, string matchId, ActionRegistry action);
-		//Task DeleteAction (string playerId, string matchId);
-		// Match
-		Task<MatchRegistry> GetMatchRegistry (string matchId);
-		Task SetMatchRegistry (MatchRegistry matchRegistry);
-		Task DeleteMatchRegistry (string matchId);
-		// States
-		Task<StateRegistry> GetState (string matchId);
-		Task<bool> SetState (string matchId, StateRegistry oldState, StateRegistry newState);
-		Task DeleteState (string matchId);
-		// General
-		Task ScheduleCheckMatch (int millisecondsDelay, string matchId, int lastHash);
-		Task<bool> GetBool (string key);
 	}
 }

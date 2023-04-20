@@ -1,4 +1,5 @@
-﻿using Azure.Data.Tables;
+﻿using Azure;
+using Azure.Data.Tables;
 using Azure.Storage.Blobs.Specialized;
 using Azure.Storage.Queues;
 using Kalkatos.FunctionsGame.Registry;
@@ -73,8 +74,18 @@ namespace Kalkatos.FunctionsGame.Azure
 		{
 			await Task.Delay(1);
 			TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Matchmaking");
-			// TODO Check the other parameters too
-			var query = tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == playerId);
+			Pageable<PlayerLookForMatchEntity> query = default;
+			if (!string.IsNullOrEmpty(region))
+				query = tableClient.Query<PlayerLookForMatchEntity>(item => item.PartitionKey == region);
+			if (!string.IsNullOrEmpty(playerId))
+				query = (Pageable<PlayerLookForMatchEntity>)query.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == playerId));
+			if (!string.IsNullOrEmpty(matchId))
+				query = (Pageable<PlayerLookForMatchEntity>)query.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.MatchId == matchId));
+			if (status != MatchmakingStatus.Undefined)
+			{
+				int statusInt = (int)status;
+				query = (Pageable<PlayerLookForMatchEntity>)query.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.Status == statusInt));
+			}
 			int count = query.Count();
 			if (count > 0)
 			{
@@ -87,10 +98,24 @@ namespace Kalkatos.FunctionsGame.Azure
 			return null;
 		}
 
+		public async Task UpsertMatchmakingEntry (MatchmakingEntry entry)
+		{
+			TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Matchmaking");
+			await tableClient.UpsertEntityAsync(
+				new PlayerLookForMatchEntity
+				{
+					PartitionKey = entry.Region,
+					RowKey = entry.PlayerId,
+					MatchId = entry.MatchId,
+					PlayerInfoSerialized = entry.PlayerInfoSerialized,
+					Status = (int)entry.Status,
+				});
+		}
+
 		public async Task DeleteMatchmakingHistory (string playerId, string matchId)
 		{
 			TableClient matchmakingTable = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Matchmaking");
-			global::Azure.Pageable<PlayerLookForMatchEntity> query;
+			Pageable<PlayerLookForMatchEntity> query;
 			if (string.IsNullOrEmpty(matchId))
 				query = matchmakingTable.Query<PlayerLookForMatchEntity>(entry => entry.RowKey == playerId);
 			else if (string.IsNullOrEmpty(playerId))
@@ -211,6 +236,30 @@ namespace Kalkatos.FunctionsGame.Azure
 						return dataDict[key] == "1";
 				}
 			return false;
+		}
+	}
+
+	public class PlayerLookForMatchEntity : ITableEntity
+	{
+		public string PartitionKey { get; set; } // Player region & other matchmaking data
+		public string RowKey { get; set; } // Player ID
+		public string PlayerInfoSerialized { get; set; }
+		public string MatchId { get; set; }
+		public int Status { get; set; }
+		public DateTimeOffset? Timestamp { get; set; }
+		public ETag ETag { get; set; }
+
+		public MatchmakingEntry ToEntry ()
+		{
+			return new MatchmakingEntry
+			{
+				Region = PartitionKey,
+				PlayerId = RowKey,
+				MatchId = MatchId,
+				Status = (MatchmakingStatus)Status,
+				PlayerInfoSerialized = PlayerInfoSerialized,
+				Timestamp = Timestamp.Value.DateTime
+			};
 		}
 	}
 }

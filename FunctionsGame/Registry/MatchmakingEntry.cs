@@ -1,4 +1,6 @@
-﻿namespace Kalkatos.FunctionsGame.Registry
+﻿using System;
+
+namespace Kalkatos.FunctionsGame.Registry
 {
 	public class MatchmakingEntry
     {
@@ -7,6 +9,7 @@
 		public string PlayerInfoSerialized;
 		public string MatchId;
         public MatchmakingStatus Status;
+		public DateTime Timestamp;
 	}
 
 	public enum MatchmakingStatus

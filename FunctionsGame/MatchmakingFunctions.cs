@@ -349,26 +349,5 @@ namespace Kalkatos.FunctionsGame
 		public MatchmakingRules Rules;
 	}
 
-	public class PlayerLookForMatchEntity : ITableEntity
-	{
-		public string PartitionKey { get; set; } // Player region & other matchmaking data
-		public string RowKey { get; set; } // Player ID
-		public string PlayerInfoSerialized { get; set; }
-		public string MatchId { get; set; }
-		public int Status { get; set; }
-		public DateTimeOffset? Timestamp { get; set; }
-		public ETag ETag { get; set; }
-
-		public MatchmakingEntry ToEntry ()
-		{
-			return new MatchmakingEntry
-			{
-				Region = PartitionKey,
-				PlayerId = RowKey,
-				MatchId = MatchId,
-				Status = (MatchmakingStatus)Status,
-				PlayerInfoSerialized = PlayerInfoSerialized
-			};
-		}
-	}
+	
 }
