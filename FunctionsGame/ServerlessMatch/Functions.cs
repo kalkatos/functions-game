@@ -1,7 +1,9 @@
-﻿using Kalkatos.FunctionsGame.Registry;
+﻿using Azure.Core;
+using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
 using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -142,7 +144,15 @@ namespace Kalkatos.FunctionsGame
 			if (entries != null && entries.Length > 1)
 				foreach (MatchmakingEntry entry in entries)
 					await service.DeleteMatchmakingHistory(entry.PlayerId, entry.MatchId);
-			await service.UpsertMatchmakingEntry(request.Region, request.PlayerId, null, MatchmakingStatus.Searching, null);
+			string playerInfoSerialized = JsonConvert.SerializeObject((await service.GetPlayerRegistry(request.PlayerId)).Info);
+			await service.UpsertMatchmakingEntry(
+				new MatchmakingEntry 
+				{ 
+					Region = request.Region, 
+					PlayerId = request.PlayerId, 
+					Status = MatchmakingStatus.Searching,
+					PlayerInfoSerialized = playerInfoSerialized
+				});
 
 			await TryToMatchPlayers(request.GameId, request.Region);
 
@@ -274,9 +284,50 @@ namespace Kalkatos.FunctionsGame
 		{
 			// TODO TryToMatchPlayers
 			// Get settings for matchmaking
+			GameRegistry gameRegistry = await service.GetGameConfig(gameId);
+			int minPlayers = gameRegistry.HasSetting("MinPlayerCount") ? int.Parse(gameRegistry.GetValue("MinPlayerCount")) : 2;
 			// Get entries for that region
+			MatchmakingEntry[] entries = await service.GetMatchmakingEntries(region, null, null, MatchmakingStatus.Undefined);
+			if (entries.Length >= minPlayers) 
+			{
+				List<MatchmakingEntry> matchCandidates = new List<MatchmakingEntry>();
+				for (int i = 0; i < entries.Length; i++)
+				{
+					if (entries[i] == null)
+						continue;
+					if (entries[i].Status == MatchmakingStatus.Searching)
+						matchCandidates.Add(entries[i]);
+				}
+				for (int i = 0; i < matchCandidates.Count; i += minPlayers)
+				{
+					string matchId = Guid.NewGuid().ToString();
+					string[] ids = new string[minPlayers];
+					for (int j = i; j < i + minPlayers; j++)
+					{
+						MatchmakingEntry entry = matchCandidates[j];
+						entry.MatchId = matchId;
+						entry.Status = MatchmakingStatus.Matched;
+						ids[j - i] = entry.PlayerId;
+						await service.UpsertMatchmakingEntry(entry);
+					}
+					MatchRegistry match = new MatchRegistry
+					{
+						MatchId = matchId,
+						CreatedTime = DateTime.UtcNow,
+						PlayerIds = ids,
+						Region = region,
+
+					};
+				}
+			}
 			// If enough players, match them
 			// Else if entries are old enough and can match with bots, do so
+
+			async void CreateMatch (MatchmakingEntry[] entries)
+			{
+
+			}
+			
 			return null;
 		}
 

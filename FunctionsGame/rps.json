@@ -2,12 +2,20 @@
 	"FirstCheckMatchDelay":45,
 	"RecurrentCheckMatchDelay":60,
 	"FinalCheckMatchDelay":4,
-	"Settings":
-	{
+	"Settings": {
 		"FirstTurnDelay": "30",
 		"PlayPhaseStartDelay": "5",
 		"TurnDuration": "10",
 		"EndTurnDelay": "5",
-		"TargetVictoryPoints": "2"
+		"TargetVictoryPoints": "2",
+		
+		"DelayBetweenAttempts": "2.0",
+		"MaxAttempts": "3",
+		"MinPlayerCount": "2",
+		"MaxPlayerCount": "2",
+		"HasBackfill": "0",
+		"WaitingTimeForBackfill": "5",
+		"DoBackfillWithBots": "0",
+		"ActionForNoPlayers": "1"
 	}
 }

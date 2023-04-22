@@ -78,13 +78,16 @@ namespace Kalkatos.FunctionsGame.Azure
 			if (!string.IsNullOrEmpty(region))
 				query = tableClient.Query<PlayerLookForMatchEntity>(item => item.PartitionKey == region);
 			if (!string.IsNullOrEmpty(playerId))
-				query = (Pageable<PlayerLookForMatchEntity>)query.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == playerId));
+				query = (Pageable<PlayerLookForMatchEntity>)query?.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == playerId))
+					?? tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == playerId);
 			if (!string.IsNullOrEmpty(matchId))
-				query = (Pageable<PlayerLookForMatchEntity>)query.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.MatchId == matchId));
+				query = (Pageable<PlayerLookForMatchEntity>)query?.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.MatchId == matchId))
+					?? tableClient.Query<PlayerLookForMatchEntity>(item => item.MatchId == matchId);
 			if (status != MatchmakingStatus.Undefined)
 			{
 				int statusInt = (int)status;
-				query = (Pageable<PlayerLookForMatchEntity>)query.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.Status == statusInt));
+				query = (Pageable<PlayerLookForMatchEntity>)query?.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.Status == statusInt))
+					?? tableClient.Query<PlayerLookForMatchEntity>(item => item.Status == statusInt);
 			}
 			int count = query.Count();
 			if (count > 0)

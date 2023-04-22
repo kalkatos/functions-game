@@ -8,5 +8,17 @@ namespace Kalkatos.FunctionsGame.Registry
         public int RecurrentCheckMatchDelay;
         public int FinalCheckMatchDelay;
         public Dictionary<string, string> Settings;
+
+        public bool HasSetting (string key)
+        { 
+            return Settings.ContainsKey (key); 
+        }
+
+        public string GetValue (string key)
+        {
+            if (HasSetting(key))
+                return Settings[key];
+            return null;
+        }
     }
 }
