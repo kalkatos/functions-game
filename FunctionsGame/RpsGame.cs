@@ -1,6 +1,5 @@
 ﻿using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
-using Newtonsoft.Json;
 using System;
 
 namespace Kalkatos.FunctionsGame.Rps
@@ -16,7 +15,6 @@ namespace Kalkatos.FunctionsGame.Rps
 		private int currentMove = -1;
 
 		// Config Keys
-		private const string playPhaseStartDelayKey = "PlayPhaseStartDelay";
 		private const string turnDurationKey = "TurnDuration";
 		private const string endTurnDelayKey = "EndTurnDelay";
 		private const string targetVictoryPointsKey = "TargetVictoryPoints";

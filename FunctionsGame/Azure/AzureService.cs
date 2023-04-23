@@ -74,22 +74,24 @@ namespace Kalkatos.FunctionsGame.Azure
 		{
 			await Task.Delay(1);
 			TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Matchmaking");
-			Pageable<PlayerLookForMatchEntity> query = default;
+			List<PlayerLookForMatchEntity> query = null;
 			if (!string.IsNullOrEmpty(region))
-				query = tableClient.Query<PlayerLookForMatchEntity>(item => item.PartitionKey == region);
+				query = tableClient.Query<PlayerLookForMatchEntity>(item => item.PartitionKey == region)?.ToList();
 			if (!string.IsNullOrEmpty(playerId))
-				query = (Pageable<PlayerLookForMatchEntity>)query?.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == playerId))
-					?? tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == playerId);
+				query = query?.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == playerId))?.ToList()
+					?? tableClient.Query<PlayerLookForMatchEntity>(item => item.RowKey == playerId)?.ToList();
 			if (!string.IsNullOrEmpty(matchId))
-				query = (Pageable<PlayerLookForMatchEntity>)query?.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.MatchId == matchId))
-					?? tableClient.Query<PlayerLookForMatchEntity>(item => item.MatchId == matchId);
+				query = query?.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.MatchId == matchId))?.ToList()
+					?? tableClient.Query<PlayerLookForMatchEntity>(item => item.MatchId == matchId)?.ToList();
 			if (status != MatchmakingStatus.Undefined)
 			{
 				int statusInt = (int)status;
-				query = (Pageable<PlayerLookForMatchEntity>)query?.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.Status == statusInt))
-					?? tableClient.Query<PlayerLookForMatchEntity>(item => item.Status == statusInt);
+				query = query?.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.Status == statusInt))?.ToList()
+					?? tableClient.Query<PlayerLookForMatchEntity>(item => item.Status == statusInt)?.ToList();
 			}
-			int count = query.Count();
+			if (query == null)
+				return null;
+			int count = query.Count;
 			if (count > 0)
 			{
 				MatchmakingEntry[] result = new MatchmakingEntry[count];
