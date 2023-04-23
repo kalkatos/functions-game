@@ -37,7 +37,7 @@ namespace Kalkatos.FunctionsGame
 				playerId = Guid.NewGuid().ToString();
 				await service.RegisterDeviceWithId(request.Identifier, playerId);
 				string newPlayerAlias = Guid.NewGuid().ToString();
-				PlayerInfo newPlayerInfo = new PlayerInfo { Alias = newPlayerAlias, Nickname = request.Nickname };
+				PlayerInfo newPlayerInfo = new PlayerInfo { Alias = newPlayerAlias, Nickname = request.Nickname, CustomData = gameRegistry.DefaultPlayerCustomData };
 				playerRegistry = new PlayerRegistry
 				{
 					PlayerId = playerId,

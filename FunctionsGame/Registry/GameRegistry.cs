@@ -7,6 +7,7 @@ namespace Kalkatos.FunctionsGame.Registry
         public int FirstCheckMatchDelay;
         public int RecurrentCheckMatchDelay;
         public int FinalCheckMatchDelay;
+        public Dictionary<string, string> DefaultPlayerCustomData;
         public Dictionary<string, string> Settings;
 
         public bool HasSetting (string key)
