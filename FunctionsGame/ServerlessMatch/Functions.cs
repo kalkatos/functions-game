@@ -1,5 +1,4 @@
-﻿using Azure.Core;
-using Kalkatos.FunctionsGame.Registry;
+﻿using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
 using Newtonsoft.Json;
 using System;
@@ -16,11 +15,15 @@ namespace Kalkatos.FunctionsGame
 #else
 		private static IService service;
 #endif
-		private static IGame game = new Rps.RpsGame();
 		private static Random rand = new Random();
 		private const string consonantsUpper = "BCDFGHJKLMNPQRSTVWXZ";
 		private const string consonantsLower = "bcdfghjklmnpqrstvwxz";
 		private const string vowels = "aeiouy";
+
+		private static Dictionary<string, IGame> gameList = new Dictionary<string, IGame>()
+		{
+			{ "rps", new Rps.RpsGame() }
+		};
 
 		// ================================= L O G I N ==========================================
 
@@ -29,7 +32,7 @@ namespace Kalkatos.FunctionsGame
 			if (string.IsNullOrEmpty(request.Identifier) || string.IsNullOrEmpty(request.GameId))
 				return new LoginResponse { IsError = true, Message = "Identifier is null. Must be an unique user identifier." };
 			GameRegistry gameRegistry = await service.GetGameConfig(request.GameId);
-			game.SetSettings(gameRegistry);
+			gameList[request.GameId].SetSettings(gameRegistry);
 			PlayerRegistry playerRegistry;
 			string playerId = await service.GetPlayerId(request.Identifier);
 			if (string.IsNullOrEmpty(playerId))
@@ -111,7 +114,7 @@ namespace Kalkatos.FunctionsGame
 					Logger.LogError("   [SendAction] State came out null. Retrying...");
 					continue;
 				}
-				if (!game.IsActionAllowed(request.PlayerId, request.Action, match, state))
+				if (!gameList[match.GameId].IsActionAllowed(request.PlayerId, request.Action, match, state))
 					return new ActionResponse { IsError = true, Message = "Action is not allowed." };
 				newState = state.Clone();
 				if (request.Action.PublicChanges != null)
@@ -146,14 +149,13 @@ namespace Kalkatos.FunctionsGame
 					await service.DeleteMatchmakingHistory(entry.PlayerId, entry.MatchId);
 			string playerInfoSerialized = JsonConvert.SerializeObject((await service.GetPlayerRegistry(request.PlayerId)).Info);
 			await service.UpsertMatchmakingEntry(
-				new MatchmakingEntry 
-				{ 
-					Region = request.Region, 
-					PlayerId = request.PlayerId, 
+				new MatchmakingEntry
+				{
+					Region = request.Region,
+					PlayerId = request.PlayerId,
 					Status = MatchmakingStatus.Searching,
 					PlayerInfoSerialized = playerInfoSerialized
 				});
-
 			await TryToMatchPlayers(request.GameId, request.Region);
 
 			return new Response { Message = "Find match request registered successfully." };
@@ -176,8 +178,10 @@ namespace Kalkatos.FunctionsGame
 					if (entries.Length > 1)
 						Logger.LogWarning($"[{nameof(GetMatch)}] More than one entry in matchmaking found! Player = {request.PlayerId} Query = {entries}");
 					var playerEntry = entries[0];
+					if (playerEntry.Status == MatchmakingStatus.FailedWithNoPlayers)
+						return new MatchResponse { IsError = true, Message = $"Matchmaking failed with no players." };
 					if (attempt == 1 && string.IsNullOrEmpty(playerEntry.MatchId))
-						await TryToMatchPlayers(request.GameId, request.GameId);
+						await TryToMatchPlayers(request.GameId, request.Region);
 					else
 						request.MatchId = playerEntry.MatchId;
 				}
@@ -209,16 +213,6 @@ namespace Kalkatos.FunctionsGame
 			await service.DeleteMatchRegistry(matchId);
 		}
 
-		// Temp
-		public static void VerifyMatch (string matchId)
-		{
-			_ = Task.Run(async () => 
-			{
-				GameRegistry gameRegistry = await service.GetGameConfig(game.GameId);
-				await service.ScheduleCheckMatch(gameRegistry.FirstCheckMatchDelay * 1000, matchId, 0); 
-			});
-		}
-
 		public static async Task CheckMatch (string matchId, int lastHash)
 		{
 			StateRegistry state = await service.GetState(matchId);
@@ -228,8 +222,9 @@ namespace Kalkatos.FunctionsGame
 				await DeleteMatch(matchId);
 			else
 			{
-				GameRegistry gameRegistry = await service.GetGameConfig(game.GameId);
-				await service.ScheduleCheckMatch(gameRegistry.RecurrentCheckMatchDelay * 1000, matchId, state.Hash); 
+				MatchRegistry match = await service.GetMatchRegistry(matchId);
+				GameRegistry gameRegistry = await service.GetGameConfig(gameList[match.GameId].GameId);
+				await service.ScheduleCheckMatch(gameRegistry.RecurrentCheckMatchDelay * 1000, matchId, state.Hash);
 			}
 		}
 
@@ -253,7 +248,7 @@ namespace Kalkatos.FunctionsGame
 					match.Status = (int)MatchStatus.Started;
 					match.StartTime = DateTime.UtcNow;
 					await service.SetMatchRegistry(match);
-					currentState = await PrepareTurn (request.PlayerId, match, currentState);
+					currentState = await PrepareTurn(request.PlayerId, match, currentState);
 
 					Logger.LogWarning("   [GetMatchState] StateRegistry = = " + JsonConvert.SerializeObject(currentState));
 
@@ -280,15 +275,19 @@ namespace Kalkatos.FunctionsGame
 
 		// ================================= P R I V A T E ==========================================
 
-		private static async Task<string> TryToMatchPlayers (string gameId, string region)
+		private static async Task TryToMatchPlayers (string gameId, string region)
 		{
-			// TODO TryToMatchPlayers
 			// Get settings for matchmaking
+			Logger.LogWarning("    [TryToMatchPlayers] Getting game registry.");
 			GameRegistry gameRegistry = await service.GetGameConfig(gameId);
-			int minPlayers = gameRegistry.HasSetting("MinPlayerCount") ? int.Parse(gameRegistry.GetValue("MinPlayerCount")) : 2;
+			Logger.LogWarning("    [TryToMatchPlayers] Getting variables.");
+			int playerCount = gameRegistry.HasSetting("PlayerCount") && int.TryParse(gameRegistry.GetValue("PlayerCount"), out int count) ? count : 2;
+			float maxWaitToMatchWithBots = gameRegistry.HasSetting("MaxWait") && float.TryParse(gameRegistry.GetValue("MaxWait"), out float wait) ? wait : 6.0f;
+			string actionForNoPlayers = gameRegistry.HasSetting("ActionForNoPlayers") ? gameRegistry.GetValue("ActionForNoPlayers") : "MatchWithBots";
 			// Get entries for that region
+			Logger.LogWarning($"    [TryToMatchPlayers] Getting entries for region {region}.");
 			MatchmakingEntry[] entries = await service.GetMatchmakingEntries(region, null, null, MatchmakingStatus.Undefined);
-			if (entries.Length >= minPlayers) 
+			if (entries.Length >= playerCount)
 			{
 				List<MatchmakingEntry> matchCandidates = new List<MatchmakingEntry>();
 				for (int i = 0; i < entries.Length; i++)
@@ -298,42 +297,87 @@ namespace Kalkatos.FunctionsGame
 					if (entries[i].Status == MatchmakingStatus.Searching)
 						matchCandidates.Add(entries[i]);
 				}
-				for (int i = 0; i < matchCandidates.Count; i += minPlayers)
+				Logger.LogWarning($"    [TryToMatchPlayers] Found match candidates amount: {matchCandidates.Count}.");
+				while (matchCandidates.Count >= playerCount)
 				{
-					string matchId = Guid.NewGuid().ToString();
-					string[] ids = new string[minPlayers];
-					for (int j = i; j < i + minPlayers; j++)
+					List<MatchmakingEntry> range = matchCandidates.GetRange(0, playerCount);
+					matchCandidates.RemoveRange(0, playerCount);
+					Logger.LogWarning($"    [TryToMatchPlayers] Creating match.");
+					await CreateMatch(range, false);
+				}
+				if (matchCandidates.Count > 0 && (DateTime.UtcNow - matchCandidates.Max(e => e.Timestamp)).TotalSeconds >= maxWaitToMatchWithBots)
+				{
+					if (actionForNoPlayers == "MatchWithBots")
 					{
-						MatchmakingEntry entry = matchCandidates[j];
-						entry.MatchId = matchId;
-						entry.Status = MatchmakingStatus.Matched;
-						ids[j - i] = entry.PlayerId;
-						await service.UpsertMatchmakingEntry(entry);
+						// Match with bots
+						int candidatesCount = matchCandidates.Count;
+						for (int i = 0; i < playerCount - candidatesCount; i++)
+						{
+							// Add bot entry to the matchmaking table
+							string botId = "X" + Guid.NewGuid().ToString();
+							string botAlias = Guid.NewGuid().ToString();
+							PlayerInfo botInfo = new PlayerInfo
+							{
+								Alias = botAlias,
+								Nickname = CreateBotNickname(),
+							};
+							matchCandidates.Add(
+								new MatchmakingEntry
+								{
+									PlayerId = botId,
+									PlayerInfoSerialized = JsonConvert.SerializeObject(botInfo),
+									Region = region,
+									Status = MatchmakingStatus.Searching,
+									Timestamp = DateTime.UtcNow
+								});
+						}
+						await CreateMatch(matchCandidates, true);
 					}
-					MatchRegistry match = new MatchRegistry
+					else
 					{
-						MatchId = matchId,
-						CreatedTime = DateTime.UtcNow,
-						PlayerIds = ids,
-						Region = region,
-
-					};
+						foreach (var item in matchCandidates)
+						{
+							item.Status = MatchmakingStatus.FailedWithNoPlayers;
+							await service.UpsertMatchmakingEntry(item);
+						}
+					}
 				}
 			}
-			// If enough players, match them
-			// Else if entries are old enough and can match with bots, do so
 
-			async void CreateMatch (MatchmakingEntry[] entries)
+			async Task CreateMatch (List<MatchmakingEntry> entries, bool hasBots)
 			{
-
+				string matchId = Guid.NewGuid().ToString();
+				string[] ids = new string[entries.Count];
+				PlayerInfo[] infos = new PlayerInfo[entries.Count];
+				for (int i = 0; i < entries.Count; i++)
+				{
+					MatchmakingEntry entry = entries[i];
+					if (entry.PlayerId[0] == 'X')
+						continue;
+					entry.MatchId = matchId;
+					entry.Status = MatchmakingStatus.Matched;
+					ids[i] = entry.PlayerId;
+					infos[i] = JsonConvert.DeserializeObject<PlayerInfo>(entry.PlayerInfoSerialized);
+					await service.UpsertMatchmakingEntry(entry);
+				}
+				MatchRegistry match = new MatchRegistry
+				{
+					GameId = gameId,
+					MatchId = matchId,
+					CreatedTime = DateTime.UtcNow,
+					PlayerIds = ids,
+					PlayerInfos = infos,
+					Region = region,
+					HasBots = hasBots
+				};
+				// TODO Write match registry
+				await service.SetMatchRegistry(match);
 			}
-			
-			return null;
 		}
 
 		private static async Task<StateRegistry> CreateFirstStateAndRegister (MatchRegistry match)
 		{
-			StateRegistry newState = game.CreateFirstState(match);
+			StateRegistry newState = gameList[match.GameId].CreateFirstState(match);
 			await service.SetState(match.MatchId, null, newState);
 			return newState;
 		}
@@ -342,7 +386,7 @@ namespace Kalkatos.FunctionsGame
 		{
 			if (lastState == null)
 				Logger.LogError("   [PrepareTurn] Last state should not be null.");
-			StateRegistry newState = game.PrepareTurn(requesterId, match, lastState);
+			StateRegistry newState = gameList[match.GameId].PrepareTurn(requesterId, match, lastState);
 			if (newState.IsMatchEnded && match.Status != (int)MatchStatus.Ended)
 			{
 				match.Status = (int)MatchStatus.Ended;
@@ -350,9 +394,9 @@ namespace Kalkatos.FunctionsGame
 				if (!await service.SetState(match.MatchId, lastState, newState))
 				{
 					Logger.LogError("   [PrepareTurn] States didn't match, retrying....");
-					return await PrepareTurn(requesterId, match, await service.GetState(match.MatchId)); 
+					return await PrepareTurn(requesterId, match, await service.GetState(match.MatchId));
 				}
-				GameRegistry gameRegistry = await service.GetGameConfig(game.GameId);
+				GameRegistry gameRegistry = await service.GetGameConfig(gameList[match.GameId].GameId);
 				await service.ScheduleCheckMatch(gameRegistry.FinalCheckMatchDelay * 1000, match.MatchId, newState.Hash);
 				return newState;
 			}
@@ -361,7 +405,7 @@ namespace Kalkatos.FunctionsGame
 			if (!await service.SetState(match.MatchId, lastState, newState))
 			{
 				Logger.LogError("   [PrepareTurn] States didn't match, retrying....");
-				return await PrepareTurn(requesterId, match, await service.GetState(match.MatchId)); 
+				return await PrepareTurn(requesterId, match, await service.GetState(match.MatchId));
 			}
 			return newState;
 		}

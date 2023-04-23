@@ -5,6 +5,7 @@ namespace Kalkatos.FunctionsGame.Registry
 {
 	public class MatchRegistry
     {
+        public string GameId;
         public string MatchId;
         public string[] PlayerIds;
         public PlayerInfo[] PlayerInfos;

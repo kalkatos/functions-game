@@ -44,6 +44,20 @@ namespace Kalkatos.FunctionsGame.Azure
 
 		// ================================= M A T C H M A K I N G ==========================================
 
+		[FunctionName(nameof(FindMatch))]
+		public static async Task<string> FindMatch (
+			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
+			ILogger log)
+		{
+			Logger.Setup(log);
+			log.LogWarning($"   [{nameof(FindMatch)}] Request = {requestSerialized}");
+			FindMatchRequest request = JsonConvert.DeserializeObject<FindMatchRequest>(requestSerialized);
+			Response response = await MatchFunctions.FindMatch(request);
+			string responseSerialized = JsonConvert.SerializeObject(response);
+			log.LogWarning($"   [{nameof(FindMatch)}] === {responseSerialized}");
+			return responseSerialized;
+		}
+
 		[FunctionName(nameof(GetMatch))]
 		public static async Task<string> GetMatch (
 			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,

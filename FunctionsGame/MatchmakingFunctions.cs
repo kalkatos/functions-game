@@ -1,5 +1,4 @@
-﻿using Azure;
-using Azure.Data.Tables;
+﻿using Azure.Data.Tables;
 using Azure.Storage.Blobs.Specialized;
 using Kalkatos.FunctionsGame.Azure;
 using Kalkatos.FunctionsGame.Registry;
@@ -22,56 +21,56 @@ namespace Kalkatos.FunctionsGame
 {
 	public static class MatchmakingFunctions
 	{
-		[FunctionName(nameof(FindMatch))]
-		public static async Task<string> FindMatch (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string playerId,
-			[DurableClient] IDurableOrchestrationClient durableFunctionsClient,
-			ILogger log)
-		{
-			log.LogWarning($"   [{nameof(FindMatch)}] Executing Find Match.");
+		//[FunctionName(nameof(FindMatchOld))]
+		//public static async Task<string> FindMatchOld (
+		//	[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string playerId,
+		//	[DurableClient] IDurableOrchestrationClient durableFunctionsClient,
+		//	ILogger log)
+		//{
+		//	log.LogWarning($"   [{nameof(FindMatchOld)}] Executing Find Match.");
 
-			string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
-			// Get player region and other matchmaking related info
-			BlockBlobClient playerInfoFile = new BlockBlobClient(connectionString, "players", $"{playerId}.json");
-			using Stream stream = await playerInfoFile.OpenReadAsync();
-			string playerRegistrySerialized = Helper.ReadBytes(stream);
-			PlayerRegistry playerRegistry = JsonConvert.DeserializeObject<PlayerRegistry>(playerRegistrySerialized);
-			string playerRegion = playerRegistry.Region;
+		//	string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
+		//	// Get player region and other matchmaking related info
+		//	BlockBlobClient playerInfoFile = new BlockBlobClient(connectionString, "players", $"{playerId}.json");
+		//	using Stream stream = await playerInfoFile.OpenReadAsync();
+		//	string playerRegistrySerialized = Helper.ReadBytes(stream);
+		//	PlayerRegistry playerRegistry = JsonConvert.DeserializeObject<PlayerRegistry>(playerRegistrySerialized);
+		//	string playerRegion = playerRegistry.Region;
 
-			// Check if there is an entry in matchmaking for this player, if not add one
-			TableClient matchmakingTable = new TableClient(connectionString, "Matchmaking");
-			var playerQuery = matchmakingTable.Query<PlayerLookForMatchEntity>((entity) => entity.PartitionKey == playerRegion && entity.RowKey == playerId);
-			if (playerQuery.Count() > 0)
-			{
-				log.LogWarning($"   [{nameof(FindMatch)}] Found previous matchmaking entries...");
-				foreach (var item in playerQuery)
-					await matchmakingTable.DeleteEntityAsync(item.PartitionKey, item.RowKey, item.ETag);
-			}
-			await matchmakingTable.AddEntityAsync(new PlayerLookForMatchEntity
-			{
-				PartitionKey = playerRegion,
-				RowKey = playerId,
-				PlayerInfoSerialized = JsonConvert.SerializeObject(playerRegistry.Info),
-				Status = (int)MatchmakingStatus.Searching
-			});
+		//	// Check if there is an entry in matchmaking for this player, if not add one
+		//	TableClient matchmakingTable = new TableClient(connectionString, "Matchmaking");
+		//	var playerQuery = matchmakingTable.Query<PlayerLookForMatchEntity>((entity) => entity.PartitionKey == playerRegion && entity.RowKey == playerId);
+		//	if (playerQuery.Count() > 0)
+		//	{
+		//		log.LogWarning($"   [{nameof(FindMatchOld)}] Found previous matchmaking entries...");
+		//		foreach (var item in playerQuery)
+		//			await matchmakingTable.DeleteEntityAsync(item.PartitionKey, item.RowKey, item.ETag);
+		//	}
+		//	await matchmakingTable.AddEntityAsync(new PlayerLookForMatchEntity
+		//	{
+		//		PartitionKey = playerRegion,
+		//		RowKey = playerId,
+		//		PlayerInfoSerialized = JsonConvert.SerializeObject(playerRegistry.Info),
+		//		Status = (int)MatchmakingStatus.Searching
+		//	});
 
-			// Check orchestrator
-			string orchestratorId = $"Orchestrator-{playerRegion}";
-			DurableOrchestrationStatus functionStatus = await durableFunctionsClient.GetStatusAsync(orchestratorId);
+		//	// Check orchestrator
+		//	string orchestratorId = $"Orchestrator-{playerRegion}";
+		//	DurableOrchestrationStatus functionStatus = await durableFunctionsClient.GetStatusAsync(orchestratorId);
 
-			if (functionStatus == null
-				|| functionStatus.RuntimeStatus == OrchestrationRuntimeStatus.Completed
-				|| functionStatus.RuntimeStatus == OrchestrationRuntimeStatus.Failed
-				|| functionStatus.RuntimeStatus == OrchestrationRuntimeStatus.Terminated)
-			{
-				log.LogWarning($"   [{nameof(FindMatch)}] No orchestrator running for this region ({playerRegion}), starting a new one.");
-				await durableFunctionsClient.StartNewAsync(nameof(MatchmakingOrchestrator), orchestratorId, new MatchmakingOrchestratorInfo { ExecutionCount = 0, Region = playerRegion });
-			}
-			else
-				log.LogWarning($"   [{nameof(FindMatch)}] Orchestrator already running for region ({playerRegion}). Json = {JsonConvert.SerializeObject(functionStatus)}");
+		//	if (functionStatus == null
+		//		|| functionStatus.RuntimeStatus == OrchestrationRuntimeStatus.Completed
+		//		|| functionStatus.RuntimeStatus == OrchestrationRuntimeStatus.Failed
+		//		|| functionStatus.RuntimeStatus == OrchestrationRuntimeStatus.Terminated)
+		//	{
+		//		log.LogWarning($"   [{nameof(FindMatchOld)}] No orchestrator running for this region ({playerRegion}), starting a new one.");
+		//		await durableFunctionsClient.StartNewAsync(nameof(MatchmakingOrchestrator), orchestratorId, new MatchmakingOrchestratorInfo { ExecutionCount = 0, Region = playerRegion });
+		//	}
+		//	else
+		//		log.LogWarning($"   [{nameof(FindMatchOld)}] Orchestrator already running for region ({playerRegion}). Json = {JsonConvert.SerializeObject(functionStatus)}");
 
-			return $"{{\"{nameof(Response.IsError)}\":false,\"{nameof(Response.Message)}\":\"Ok.\"}}";
-		}
+		//	return $"{{\"{nameof(Response.IsError)}\":false,\"{nameof(Response.Message)}\":\"Ok.\"}}";
+		//}
 
 
 
@@ -127,7 +126,7 @@ namespace Kalkatos.FunctionsGame
 			return JsonConvert.SerializeObject(new MatchResponse { Message = "Left match successfully." });
 		}
 
-
+		/*
 		#region Orchestrator ======================================================================================
 
 
@@ -331,7 +330,7 @@ namespace Kalkatos.FunctionsGame
 
 
 		#endregion =======================================================================================
-		
+		*/
 	}
 
 	public enum TableMatchmakingResult
