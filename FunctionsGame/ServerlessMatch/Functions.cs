@@ -25,7 +25,7 @@ namespace Kalkatos.FunctionsGame
 			{ "rps", new Rps.RpsGame() }
 		};
 
-		// ================================= L O G I N ==========================================
+		// ████████████████████████████████████████████ L O G I N ████████████████████████████████████████████
 
 		public static async Task<LoginResponse> LogIn (LoginRequest request)
 		{
@@ -88,7 +88,7 @@ namespace Kalkatos.FunctionsGame
 			return new Response { Message = "Ok" };
 		}
 
-		// ================================= A C T I O N ==========================================
+		// ████████████████████████████████████████████ A C T I O N ████████████████████████████████████████████
 
 		public static async Task<ActionResponse> SendAction (ActionRequest request)
 		{
@@ -137,7 +137,7 @@ namespace Kalkatos.FunctionsGame
 			return new ActionResponse { AlteredState = newState.GetStateInfo(request.PlayerId), Message = "Action registered successfully." };
 		}
 
-		// ================================= M A T C H ==========================================
+		// ████████████████████████████████████████████ M A T C H ████████████████████████████████████████████
 
 		public static async Task<Response> FindMatch (FindMatchRequest request)
 		{
@@ -223,12 +223,14 @@ namespace Kalkatos.FunctionsGame
 			else
 			{
 				MatchRegistry match = await service.GetMatchRegistry(matchId);
+				if (match == null)
+					return;
 				GameRegistry gameRegistry = await service.GetGameConfig(gameList[match.GameId].GameId);
 				await service.ScheduleCheckMatch(gameRegistry.RecurrentCheckMatchDelay * 1000, matchId, state.Hash);
 			}
 		}
 
-		// ================================= S T A T E ==========================================
+		// ████████████████████████████████████████████ S T A T E ████████████████████████████████████████████
 
 		public static async Task<StateResponse> GetMatchState (StateRequest request)
 		{
@@ -267,13 +269,7 @@ namespace Kalkatos.FunctionsGame
 			return new StateResponse { IsError = true, Message = "Match is in an unknown state." };
 		}
 
-		// Temp
-		public static void CreateFirstState (MatchRegistry match)
-		{
-			_ = Task.Run(async () => await CreateFirstStateAndRegister(match));
-		}
-
-		// ================================= P R I V A T E ==========================================
+		// ████████████████████████████████████████████ P R I V A T E ████████████████████████████████████████████
 
 		private static async Task TryToMatchPlayers (string gameId, string region)
 		{
@@ -287,59 +283,63 @@ namespace Kalkatos.FunctionsGame
 			// Get entries for that region
 			Logger.LogWarning($"    [TryToMatchPlayers] Getting entries for region {region}.");
 			MatchmakingEntry[] entries = await service.GetMatchmakingEntries(region, null, null, MatchmakingStatus.Undefined);
-			if (entries.Length >= playerCount)
+			Logger.LogWarning($"    [TryToMatchPlayers] Got {entries.Length} entries.");
+
+			List<MatchmakingEntry> matchCandidates = new List<MatchmakingEntry>();
+			for (int i = 0; i < entries.Length; i++)
 			{
-				List<MatchmakingEntry> matchCandidates = new List<MatchmakingEntry>();
-				for (int i = 0; i < entries.Length; i++)
+				if (entries[i] == null)
+					continue;
+				if (entries[i].Status == MatchmakingStatus.Searching)
+					matchCandidates.Add(entries[i]);
+			}
+			Logger.LogWarning($"    [TryToMatchPlayers] Found match candidates amount: {matchCandidates.Count}.");
+			while (matchCandidates.Count >= playerCount)
+			{
+				List<MatchmakingEntry> range = matchCandidates.GetRange(0, playerCount);
+				matchCandidates.RemoveRange(0, playerCount);
+				Logger.LogWarning($"    [TryToMatchPlayers] Creating match.");
+				await CreateMatch(range, false);
+			}
+			DateTime entriesMaxTimestamp = matchCandidates.Max(e => e.Timestamp);
+			Logger.LogWarning($"    [TryToMatchPlayers] Entries max timestamp: {entriesMaxTimestamp.ToString("u")} ({(DateTime.UtcNow - entriesMaxTimestamp).TotalSeconds} seconds from now). Max Wait: {maxWaitToMatchWithBots}");
+			if (matchCandidates.Count > 0 && (DateTime.UtcNow - entriesMaxTimestamp).TotalSeconds >= maxWaitToMatchWithBots)
+			{
+				if (actionForNoPlayers == "MatchWithBots")
 				{
-					if (entries[i] == null)
-						continue;
-					if (entries[i].Status == MatchmakingStatus.Searching)
-						matchCandidates.Add(entries[i]);
-				}
-				Logger.LogWarning($"    [TryToMatchPlayers] Found match candidates amount: {matchCandidates.Count}.");
-				while (matchCandidates.Count >= playerCount)
-				{
-					List<MatchmakingEntry> range = matchCandidates.GetRange(0, playerCount);
-					matchCandidates.RemoveRange(0, playerCount);
-					Logger.LogWarning($"    [TryToMatchPlayers] Creating match.");
-					await CreateMatch(range, false);
-				}
-				if (matchCandidates.Count > 0 && (DateTime.UtcNow - matchCandidates.Max(e => e.Timestamp)).TotalSeconds >= maxWaitToMatchWithBots)
-				{
-					if (actionForNoPlayers == "MatchWithBots")
+					Logger.LogWarning($"    [TryToMatchPlayers] Matching with BOTS.");
+					// Match with bots
+					int candidatesCount = matchCandidates.Count;
+					Logger.LogWarning($"    [TryToMatchPlayers] Number of bots: {playerCount - candidatesCount}");
+					for (int i = 0; i < playerCount - candidatesCount; i++)
 					{
-						// Match with bots
-						int candidatesCount = matchCandidates.Count;
-						for (int i = 0; i < playerCount - candidatesCount; i++)
+						// Add bot entry to the matchmaking table
+						string botId = "X" + Guid.NewGuid().ToString();
+						string botAlias = Guid.NewGuid().ToString();
+						PlayerInfo botInfo = new PlayerInfo
 						{
-							// Add bot entry to the matchmaking table
-							string botId = "X" + Guid.NewGuid().ToString();
-							string botAlias = Guid.NewGuid().ToString();
-							PlayerInfo botInfo = new PlayerInfo
+							Alias = botAlias,
+							Nickname = CreateBotNickname(),
+							CustomData = gameRegistry.DefaultPlayerCustomData
+						};
+						matchCandidates.Add(
+							new MatchmakingEntry
 							{
-								Alias = botAlias,
-								Nickname = CreateBotNickname(),
-							};
-							matchCandidates.Add(
-								new MatchmakingEntry
-								{
-									PlayerId = botId,
-									PlayerInfoSerialized = JsonConvert.SerializeObject(botInfo),
-									Region = region,
-									Status = MatchmakingStatus.Searching,
-									Timestamp = DateTime.UtcNow
-								});
-						}
-						await CreateMatch(matchCandidates, true);
+								PlayerId = botId,
+								PlayerInfoSerialized = JsonConvert.SerializeObject(botInfo),
+								Region = region,
+								Status = MatchmakingStatus.Searching,
+								Timestamp = DateTime.UtcNow
+							});
 					}
-					else
+					await CreateMatch(matchCandidates, true);
+				}
+				else
+				{
+					foreach (var item in matchCandidates)
 					{
-						foreach (var item in matchCandidates)
-						{
-							item.Status = MatchmakingStatus.FailedWithNoPlayers;
-							await service.UpsertMatchmakingEntry(item);
-						}
+						item.Status = MatchmakingStatus.FailedWithNoPlayers;
+						await service.UpsertMatchmakingEntry(item);
 					}
 				}
 			}
@@ -352,12 +352,12 @@ namespace Kalkatos.FunctionsGame
 				for (int i = 0; i < entries.Count; i++)
 				{
 					MatchmakingEntry entry = entries[i];
+					ids[i] = entry.PlayerId;
+					infos[i] = JsonConvert.DeserializeObject<PlayerInfo>(entry.PlayerInfoSerialized);
 					if (entry.PlayerId[0] == 'X')
 						continue;
 					entry.MatchId = matchId;
 					entry.Status = MatchmakingStatus.Matched;
-					ids[i] = entry.PlayerId;
-					infos[i] = JsonConvert.DeserializeObject<PlayerInfo>(entry.PlayerInfoSerialized);
 					await service.UpsertMatchmakingEntry(entry);
 				}
 				MatchRegistry match = new MatchRegistry
@@ -370,8 +370,8 @@ namespace Kalkatos.FunctionsGame
 					Region = region,
 					HasBots = hasBots
 				};
-				// TODO Write match registry
 				await service.SetMatchRegistry(match);
+				await CreateFirstStateAndRegister(match);
 			}
 		}
 
@@ -431,8 +431,7 @@ namespace Kalkatos.FunctionsGame
 			return count == players.Length;
 		}
 
-		// Temporarily public
-		public static string CreateBotNickname ()
+		private static string CreateBotNickname ()
 		{
 			string result = "";
 			for (int i = 0; i < 6; i++)

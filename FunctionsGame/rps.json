@@ -12,7 +12,7 @@
     "EndTurnDelay": "5",
     "TargetVictoryPoints": "2",
 
-    "MaxWait": "6.0",
+    "MaxWait": "6",
     "PlayerCount": "2",
     "ActionForNoPlayers": "MatchWithBots"
   }

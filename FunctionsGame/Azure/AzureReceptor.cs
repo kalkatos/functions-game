@@ -12,7 +12,7 @@ namespace Kalkatos.FunctionsGame.Azure
 {
 	public static class AzureReceptor
 	{
-		// ================================= S T A R T U P ==========================================
+		// ████████████████████████████████████████████ S T A R T U P ████████████████████████████████████████████
 
 		[FunctionName(nameof(LogIn))]
 		public static async Task<string> LogIn (
@@ -42,7 +42,7 @@ namespace Kalkatos.FunctionsGame.Azure
 			return responseSerialized;
 		}
 
-		// ================================= M A T C H M A K I N G ==========================================
+		// ████████████████████████████████████████████ M A T C H M A K I N G ████████████████████████████████████████████
 
 		[FunctionName(nameof(FindMatch))]
 		public static async Task<string> FindMatch (
@@ -72,7 +72,7 @@ namespace Kalkatos.FunctionsGame.Azure
 			return responseSerialized;
 		}
 
-		// ================================= A C T I O N ==========================================
+		// ████████████████████████████████████████████ A C T I O N ████████████████████████████████████████████
 
 		[FunctionName(nameof(SendAction))]
 		public static async Task<string> SendAction (
@@ -89,7 +89,7 @@ namespace Kalkatos.FunctionsGame.Azure
 			return responseSerialized;
 		}
 
-		// ================================= S T A T E ==========================================
+		// ████████████████████████████████████████████ S T A T E ████████████████████████████████████████████
 
 		/// <summary>
 		/// Gets an array of states starting from the index requested up until the last one available.
@@ -110,7 +110,7 @@ namespace Kalkatos.FunctionsGame.Azure
 			return responseSerialized;
 		}
 
-		// ================================= D E L E T E ==========================================
+		// ████████████████████████████████████████████ D E L E T E ████████████████████████████████████████████
 
 		[FunctionName(nameof(CheckMatch))]
 		public static async Task CheckMatch (

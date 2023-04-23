@@ -16,7 +16,7 @@ namespace Kalkatos.FunctionsGame.Azure
 
 	public class AzureService : IService
 	{
-		// ================================= G A M E ==========================================
+		// ████████████████████████████████████████████ G A M E ████████████████████████████████████████████
 
 		public async Task<GameRegistry> GetGameConfig (string gameId)
 		{
@@ -27,7 +27,7 @@ namespace Kalkatos.FunctionsGame.Azure
 			return null;
 		}
 
-		// ================================= L O G I N ==========================================
+		// ████████████████████████████████████████████ L O G I N ████████████████████████████████████████████
 
 		public async Task<string> GetPlayerId (string deviceId)
 		{
@@ -68,7 +68,7 @@ namespace Kalkatos.FunctionsGame.Azure
 				await playerBlob.DeleteAsync();
 		}
 
-		// ================================= M A T C H M A K I N G ==========================================
+		// ████████████████████████████████████████████ M A T C H M A K I N G ████████████████████████████████████████████
 
 		public async Task<MatchmakingEntry[]> GetMatchmakingEntries (string region, string playerId, string matchId, MatchmakingStatus status)
 		{
@@ -131,7 +131,7 @@ namespace Kalkatos.FunctionsGame.Azure
 				await matchmakingTable.DeleteEntityAsync(item.PartitionKey, item.RowKey);
 		}
 
-		// ================================= M A T C H ==========================================
+		// ████████████████████████████████████████████ M A T C H ████████████████████████████████████████████
 
 		public async Task<MatchRegistry> GetMatchRegistry (string matchId)
 		{
@@ -172,7 +172,7 @@ namespace Kalkatos.FunctionsGame.Azure
 			await checkMatchQueue.SendMessageAsync(Convert.ToBase64String(bytes), TimeSpan.FromMilliseconds(millisecondsDelay));
 		}
 
-		// ================================= S T A T E ==========================================
+		// ████████████████████████████████████████████ S T A T E ████████████████████████████████████████████
 
 		public async Task<StateRegistry> GetState (string matchId)
 		{
