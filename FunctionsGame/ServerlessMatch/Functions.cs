@@ -225,7 +225,7 @@ namespace Kalkatos.FunctionsGame
 				MatchRegistry match = await service.GetMatchRegistry(matchId);
 				if (match == null)
 					return;
-				GameRegistry gameRegistry = await service.GetGameConfig(gameList[match.GameId].GameId);
+				GameRegistry gameRegistry = await service.GetGameConfig(match.GameId);
 				await service.ScheduleCheckMatch(gameRegistry.RecurrentCheckMatchDelay * 1000, matchId, state.Hash);
 			}
 		}
@@ -301,9 +301,11 @@ namespace Kalkatos.FunctionsGame
 				Logger.LogWarning($"    [TryToMatchPlayers] Creating match.");
 				await CreateMatch(range, false);
 			}
+			if (matchCandidates.Count == 0)
+				return;
 			DateTime entriesMaxTimestamp = matchCandidates.Max(e => e.Timestamp);
 			Logger.LogWarning($"    [TryToMatchPlayers] Entries max timestamp: {entriesMaxTimestamp.ToString("u")} ({(DateTime.UtcNow - entriesMaxTimestamp).TotalSeconds} seconds from now). Max Wait: {maxWaitToMatchWithBots}");
-			if (matchCandidates.Count > 0 && (DateTime.UtcNow - entriesMaxTimestamp).TotalSeconds >= maxWaitToMatchWithBots)
+			if ((DateTime.UtcNow - entriesMaxTimestamp).TotalSeconds >= maxWaitToMatchWithBots)
 			{
 				if (actionForNoPlayers == "MatchWithBots")
 				{
@@ -396,7 +398,7 @@ namespace Kalkatos.FunctionsGame
 					Logger.LogError("   [PrepareTurn] States didn't match, retrying....");
 					return await PrepareTurn(requesterId, match, await service.GetState(match.MatchId));
 				}
-				GameRegistry gameRegistry = await service.GetGameConfig(gameList[match.GameId].GameId);
+				GameRegistry gameRegistry = await service.GetGameConfig(match.GameId);
 				await service.ScheduleCheckMatch(gameRegistry.FinalCheckMatchDelay * 1000, match.MatchId, newState.Hash);
 				return newState;
 			}

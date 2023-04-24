@@ -31,8 +31,6 @@ namespace Kalkatos.FunctionsGame.Rps
 		private const string myScoreKey = "MyScore";
 		private const string opponentScoreKey = "OpponentScore";
 
-		public string GameId { get => "rps"; }
-
 		public void SetSettings (GameRegistry gameRegistry)
 		{
 			var settings = gameRegistry.Settings;
