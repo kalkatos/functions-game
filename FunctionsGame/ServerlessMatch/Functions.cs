@@ -192,7 +192,10 @@ namespace Kalkatos.FunctionsGame
 			if (match == null)
 				return new MatchResponse { IsError = true, Message = $"Match with id {request.MatchId} wasn't found." };
 			if (match.Status == (int)MatchStatus.Ended)
-				return new MatchResponse { IsError = true, Message = $"Match is over." };
+			{
+				await DeleteMatch(match.MatchId);
+				return new MatchResponse { IsError = true, Message = $"Match is over.", IsOver = true };
+			}
 			PlayerInfo[] playerInfos = new PlayerInfo[match.PlayerInfos.Length];
 			for (int i = 0; i < match.PlayerInfos.Length; i++)
 				playerInfos[i] = match.PlayerInfos[i].Clone();
@@ -374,6 +377,7 @@ namespace Kalkatos.FunctionsGame
 				};
 				await service.SetMatchRegistry(match);
 				await CreateFirstStateAndRegister(match);
+				await service.ScheduleCheckMatch(gameRegistry.FirstCheckMatchDelay * 1000, matchId, 0);
 			}
 		}
 

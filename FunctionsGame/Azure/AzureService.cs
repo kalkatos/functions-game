@@ -120,13 +120,15 @@ namespace Kalkatos.FunctionsGame.Azure
 		public async Task DeleteMatchmakingHistory (string playerId, string matchId)
 		{
 			TableClient matchmakingTable = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Matchmaking");
-			Pageable<PlayerLookForMatchEntity> query;
-			if (string.IsNullOrEmpty(matchId))
-				query = matchmakingTable.Query<PlayerLookForMatchEntity>(entry => entry.RowKey == playerId);
-			else if (string.IsNullOrEmpty(playerId))
-				query = matchmakingTable.Query<PlayerLookForMatchEntity>(entry => entry.MatchId == matchId);
-			else
-				query = matchmakingTable.Query<PlayerLookForMatchEntity>(entry => entry.MatchId == matchId && entry.RowKey == playerId);
+			List<PlayerLookForMatchEntity> query = null;
+			if (!string.IsNullOrEmpty(playerId))
+				query = query?.Intersect(matchmakingTable.Query<PlayerLookForMatchEntity>(item => item.RowKey == playerId))?.ToList()
+					?? matchmakingTable.Query<PlayerLookForMatchEntity>(item => item.RowKey == playerId)?.ToList();
+			if (!string.IsNullOrEmpty(matchId))
+				query = query?.Intersect(matchmakingTable.Query<PlayerLookForMatchEntity>(item => item.MatchId == matchId))?.ToList()
+					?? matchmakingTable.Query<PlayerLookForMatchEntity>(item => item.MatchId == matchId)?.ToList();
+			if (query == null)
+				return;
 			foreach (var item in query)
 				await matchmakingTable.DeleteEntityAsync(item.PartitionKey, item.RowKey);
 		}
