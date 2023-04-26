@@ -9,6 +9,7 @@ namespace Kalkatos.FunctionsGame.Rps
 		private readonly string[] allowedMoves = new string[] { "ROCK", "PAPER", "SCISSORS" };
 		private int maxTurnDuration = 20;
 		private int endTurnDelay = 15;
+		private int playerTimeout = 20;
 		private int targetVictoryPoints = 2;
 		private Random rand = new Random();
 		private const string humanMoves = "SPPRRSSPRPSPSPRPSPRSRSSPRRSPPRSPRPPRSPRPSRPPPSRPSRPSRPPRSPRPSPRSRPSRPPRRPSPRSRPSRPPRPSPPRPRPSPRPSPRSPRPSRP";
@@ -17,6 +18,7 @@ namespace Kalkatos.FunctionsGame.Rps
 		// Config Keys
 		private const string turnDurationKey = "TurnDuration";
 		private const string endTurnDelayKey = "EndTurnDelay";
+		private const string playerTimeoutKey = "PlayerTimeout";
 		private const string targetVictoryPointsKey = "TargetVictoryPoints";
 		// Game Keys
 		private const string phaseKey = "Phase";
@@ -38,6 +40,8 @@ namespace Kalkatos.FunctionsGame.Rps
 				maxTurnDuration = int.Parse(settings[turnDurationKey]);
 			if (settings.ContainsKey(endTurnDelayKey))
 				endTurnDelay = int.Parse(settings[endTurnDelayKey]);
+			if (settings.ContainsKey(playerTimeoutKey))
+				playerTimeout = int.Parse(settings[playerTimeoutKey]);
 			if (settings.ContainsKey(targetVictoryPointsKey))
 				targetVictoryPoints = int.Parse(settings[targetVictoryPointsKey]);
 		}
@@ -95,9 +99,9 @@ namespace Kalkatos.FunctionsGame.Rps
 							CheckRpsLogic(newState);
 							return newState;
 						}
-						else if ((utcNow - turnStartedTime).TotalSeconds >= maxTurnDuration)
+						else if ((utcNow - turnStartedTime).TotalSeconds >= maxTurnDuration + playerTimeout)
 						{
-							EndMatchWithRetreatedPlayer(newState);
+							EndMatchWithRetreatedPlayer(newState, playerId);
 							return newState;
 						}
 						else
@@ -112,9 +116,9 @@ namespace Kalkatos.FunctionsGame.Rps
 							else
 								break;
 						}
-						else if ((utcNow - turnEndedTime).TotalSeconds >= endTurnDelay)
+						else if ((utcNow - turnEndedTime).TotalSeconds >= endTurnDelay + playerTimeout)
 						{
-							EndMatchWithRetreatedPlayer(newState);
+							EndMatchWithRetreatedPlayer(newState, playerId);
 							return newState;
 						}
 						else
@@ -267,7 +271,7 @@ namespace Kalkatos.FunctionsGame.Rps
 			return false;
 		}
 
-		private void EndMatchWithRetreatedPlayer (StateRegistry state)
+		private void EndMatchWithRetreatedPlayer (StateRegistry state, string invoker)
 		{
 			string[] playerList = state.GetPlayers();
 			int matchWinner = 0;
@@ -276,6 +280,10 @@ namespace Kalkatos.FunctionsGame.Rps
 				matchWinner = -1;
 			else if (int.Parse(state.GetPrivate(playerList[0], turnResultSyncKey)) < state.TurnNumber
 				&& int.Parse(state.GetPrivate(playerList[1], turnResultSyncKey)) == state.TurnNumber)
+				matchWinner = 1;
+			else if (playerList[0] == invoker)
+				matchWinner = -1;
+			else if (playerList[1] == invoker)
 				matchWinner = 1;
 			EndMatch(state, matchWinner);
 		}
