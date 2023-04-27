@@ -133,7 +133,7 @@ namespace Kalkatos.FunctionsGame
 				}
 				break;
 			}
-			Logger.LogWarning($"   [SendAction] State after action = {JsonConvert.SerializeObject(newState)}");
+			Logger.LogWarning($"   [SendAction] State after action = {JsonConvert.SerializeObject(newState, Formatting.Indented)}");
 			return new ActionResponse { AlteredState = newState.GetStateInfo(request.PlayerId), Message = "Action registered successfully." };
 		}
 
@@ -255,7 +255,7 @@ namespace Kalkatos.FunctionsGame
 					await service.SetMatchRegistry(match);
 					currentState = await PrepareTurn(request.PlayerId, match, currentState);
 
-					Logger.LogWarning("   [GetMatchState] StateRegistry = = " + JsonConvert.SerializeObject(currentState));
+					Logger.LogWarning("   [GetMatchState] StateRegistry = = " + JsonConvert.SerializeObject(currentState, Formatting.Indented));
 
 					return new StateResponse { StateInfo = currentState.GetStateInfo(request.PlayerId) };
 				case (int)MatchStatus.Started:
@@ -433,7 +433,7 @@ namespace Kalkatos.FunctionsGame
 					playersWithHandshaking += $"| {player}";
 				}
 			if (count != players.Length)
-				Logger.LogError($"   [HasHandshakingFromAllPlayers] Player with handshaking = {count} = {playersWithHandshaking}\n{JsonConvert.SerializeObject(state)}");
+				Logger.LogError($"   [HasHandshakingFromAllPlayers] Player with handshaking = {count} = {playersWithHandshaking}\n{JsonConvert.SerializeObject(state, Formatting.Indented)}");
 			return count == players.Length;
 		}
 
