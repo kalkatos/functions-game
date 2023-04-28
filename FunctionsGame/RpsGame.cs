@@ -6,7 +6,7 @@ namespace Kalkatos.FunctionsGame.Rps
 {
 	public class RpsGame : IGame
 	{
-		private readonly string[] allowedMoves = new string[] { "ROCK", "PAPER", "SCISSORS" };
+		private readonly string[] allowedMoves = new string[] { "ROCK", "PAPER", "SCISSORS", "NOTHING" };
 		private int maxTurnDuration = 20;
 		private int endTurnDelay = 15;
 		private int playerTimeout = 20;
@@ -214,16 +214,17 @@ namespace Kalkatos.FunctionsGame.Rps
 				switch (move1)
 				{
 					case "ROCK":
-						switch (move2) { case "ROCK": return 0; case "PAPER": return 1; case "SCISSORS": case "": return -1; }
+						switch (move2) { case "ROCK": return 0; case "PAPER": return 1; case "SCISSORS": case "": case "NOTHING": return -1; }
 						break;
 					case "PAPER":
-						switch (move2) { case "ROCK": case "": return -1; case "PAPER": return 0; case "SCISSORS": return 1; }
+						switch (move2) { case "ROCK": case "": case "NOTHING": return -1; case "PAPER": return 0; case "SCISSORS": return 1; }
 						break;
 					case "SCISSORS":
-						switch (move2) { case "ROCK": return 1; case "PAPER": case "": return -1; case "SCISSORS": return 0; }
+						switch (move2) { case "ROCK": return 1; case "PAPER": case "": case "NOTHING": return -1; case "SCISSORS": return 0; }
 						break;
 					case "":
-						if (move2 != "")
+					case "NOTHING":
+						if (move2 != "" && move2 != "NOTHING")
 							return 1;
 						break;
 				}
