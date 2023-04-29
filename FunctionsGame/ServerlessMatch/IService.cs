@@ -32,5 +32,6 @@ namespace Kalkatos.FunctionsGame
 		// General
 		Task ScheduleCheckMatch (int millisecondsDelay, string matchId, int lastHash);
 		Task<bool> GetBool (string key);
+		Task LogError (string error, string group, string metadata);
 	}
 }

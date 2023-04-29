@@ -81,7 +81,7 @@ namespace Kalkatos.FunctionsGame
 				request.Data.Remove("Nickname");
 			}
 			if (playerRegistry.Info.CustomData == null)
-				playerRegistry.Info.CustomData = new System.Collections.Generic.Dictionary<string, string>();
+				playerRegistry.Info.CustomData = new Dictionary<string, string>();
 			foreach (var item in request.Data)
 				playerRegistry.Info.CustomData[item.Key] = item.Value;
 			await service.SetPlayerRegistry(playerRegistry);
@@ -176,7 +176,7 @@ namespace Kalkatos.FunctionsGame
 					if (entries == null || entries.Length == 0)
 						return new MatchResponse { IsError = true, Message = $"Didn't find any match for player." };
 					if (entries.Length > 1)
-						Logger.LogWarning($"[{nameof(GetMatch)}] More than one entry in matchmaking found! Player = {request.PlayerId} Query = {entries}");
+						Logger.LogWarning($"[{nameof(GetMatch)}] More than one entry in matchmaking found! Player = {request.PlayerId} Query = {JsonConvert.SerializeObject(entries)}");
 					var playerEntry = entries[0];
 					if (playerEntry.Status == MatchmakingStatus.FailedWithNoPlayers)
 						return new MatchResponse { IsError = true, Message = $"Matchmaking failed with no players." };
@@ -204,6 +204,38 @@ namespace Kalkatos.FunctionsGame
 				MatchId = request.MatchId,
 				Players = playerInfos
 			};
+		}
+
+		public static async Task<Response> LeaveMatch (MatchRequest request)
+		{
+			if (request == null || string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.Region))
+				return new Response { IsError = true, Message = "Wrong Parameters." };
+
+			if (string.IsNullOrEmpty(request.MatchId))
+			{
+				MatchmakingEntry[] entries = await service.GetMatchmakingEntries(null, request.PlayerId, null, MatchmakingStatus.Undefined);
+				if (entries == null || entries.Length == 0)
+					return new Response { IsError = true, Message = $"Didn't find any match for player." };
+				MatchmakingEntry playerEntry = default;
+				if (entries.Length > 1)
+					Logger.LogError($"[{nameof(GetMatch)}] More than one entry in matchmaking found! Player = {request.PlayerId} Query = {JsonConvert.SerializeObject(entries)}");
+				playerEntry = entries[0];
+				if (string.IsNullOrEmpty(playerEntry.MatchId))
+				{
+					await service.DeleteMatchmakingHistory(request.PlayerId, null);
+					return new Response { Message = $"Leave match executed by wiping matchmaking entries." };
+				}
+				request.MatchId = playerEntry.MatchId;
+			}
+			var response = await SendAction(
+				new ActionRequest 
+				{ 
+					Action = new ActionInfo { PrivateChanges = new Dictionary<string, string> { { "LeaveMatch", "1" } } }, 
+					MatchId = request.MatchId, 
+					PlayerId = request.PlayerId 
+				});
+			_ = await GetMatchState(new StateRequest { MatchId = request.MatchId, PlayerId = request.PlayerId, LastHash = response.AlteredState.Hash });
+			return new Response { Message = $"Sent action to leave match {request.MatchId}." };
 		}
 
 		public static async Task DeleteMatch (string matchId)
@@ -277,16 +309,12 @@ namespace Kalkatos.FunctionsGame
 		private static async Task TryToMatchPlayers (string gameId, string region)
 		{
 			// Get settings for matchmaking
-			Logger.LogWarning("    [TryToMatchPlayers] Getting game registry.");
 			GameRegistry gameRegistry = await service.GetGameConfig(gameId);
-			Logger.LogWarning("    [TryToMatchPlayers] Getting variables.");
 			int playerCount = gameRegistry.HasSetting("PlayerCount") && int.TryParse(gameRegistry.GetValue("PlayerCount"), out int count) ? count : 2;
 			float maxWaitToMatchWithBots = gameRegistry.HasSetting("MaxWait") && float.TryParse(gameRegistry.GetValue("MaxWait"), out float wait) ? wait : 6.0f;
 			string actionForNoPlayers = gameRegistry.HasSetting("ActionForNoPlayers") ? gameRegistry.GetValue("ActionForNoPlayers") : "MatchWithBots";
 			// Get entries for that region
-			Logger.LogWarning($"    [TryToMatchPlayers] Getting entries for region {region}.");
 			MatchmakingEntry[] entries = await service.GetMatchmakingEntries(region, null, null, MatchmakingStatus.Undefined);
-			Logger.LogWarning($"    [TryToMatchPlayers] Got {entries.Length} entries.");
 
 			List<MatchmakingEntry> matchCandidates = new List<MatchmakingEntry>();
 			for (int i = 0; i < entries.Length; i++)
@@ -296,26 +324,21 @@ namespace Kalkatos.FunctionsGame
 				if (entries[i].Status == MatchmakingStatus.Searching)
 					matchCandidates.Add(entries[i]);
 			}
-			Logger.LogWarning($"    [TryToMatchPlayers] Found match candidates amount: {matchCandidates.Count}.");
 			while (matchCandidates.Count >= playerCount)
 			{
 				List<MatchmakingEntry> range = matchCandidates.GetRange(0, playerCount);
 				matchCandidates.RemoveRange(0, playerCount);
-				Logger.LogWarning($"    [TryToMatchPlayers] Creating match.");
 				await CreateMatch(range, false);
 			}
 			if (matchCandidates.Count == 0)
 				return;
 			DateTime entriesMaxTimestamp = matchCandidates.Max(e => e.Timestamp);
-			Logger.LogWarning($"    [TryToMatchPlayers] Entries max timestamp: {entriesMaxTimestamp.ToString("u")} ({(DateTime.UtcNow - entriesMaxTimestamp).TotalSeconds} seconds from now). Max Wait: {maxWaitToMatchWithBots}");
 			if ((DateTime.UtcNow - entriesMaxTimestamp).TotalSeconds >= maxWaitToMatchWithBots)
 			{
 				if (actionForNoPlayers == "MatchWithBots")
 				{
-					Logger.LogWarning($"    [TryToMatchPlayers] Matching with BOTS.");
 					// Match with bots
 					int candidatesCount = matchCandidates.Count;
-					Logger.LogWarning($"    [TryToMatchPlayers] Number of bots: {playerCount - candidatesCount}");
 					for (int i = 0; i < playerCount - candidatesCount; i++)
 					{
 						// Add bot entry to the matchmaking table

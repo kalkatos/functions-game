@@ -78,6 +78,14 @@ namespace Kalkatos.FunctionsGame.Registry
 			return privateProperties.ContainsKey(id) && privateProperties[id].ContainsKey(key);
 		}
 
+		public bool HasAnyPrivatePropertyWithValue (string key, string value)
+		{
+			foreach (var item in privateProperties)
+				if (item.Value.ContainsKey(key) && item.Value[key] == value)
+					return true;
+			return false;
+		}
+
 		public string GetPublic (string key)
 		{
 			if (publicProperties.ContainsKey(key))

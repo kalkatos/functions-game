@@ -231,6 +231,8 @@ namespace Kalkatos.FunctionsGame.Azure
 			catch { }
 		}
 
+		// ████████████████████████████████████████████ O T H E R ████████████████████████████████████████████
+
 		public async Task<bool> GetBool (string key)
 		{
 			BlockBlobClient dataBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "rules", "data.json");
@@ -243,6 +245,15 @@ namespace Kalkatos.FunctionsGame.Azure
 						return dataDict[key] == "1";
 				}
 			return false;
+		}
+
+		public async Task LogError (string error, string group, string metadata)
+		{
+			TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Errors");
+			if (string.IsNullOrEmpty(group))
+				group = "General";
+			string id = Guid.NewGuid().ToString();
+			await tableClient.UpsertEntityAsync(new ErrorEntity { PartitionKey = group, RowKey = id, Error = error, Metadata = metadata });
 		}
 	}
 
@@ -268,5 +279,15 @@ namespace Kalkatos.FunctionsGame.Azure
 				Timestamp = Timestamp.Value.DateTime
 			};
 		}
+	}
+
+	public class ErrorEntity : ITableEntity
+	{
+		public string PartitionKey { get; set; } // Group
+		public string RowKey { get; set; } // ID
+		public string Error { get; set; }
+		public string Metadata { get; set; }
+		public DateTimeOffset? Timestamp { get; set; }
+		public ETag ETag { get; set; }
 	}
 }

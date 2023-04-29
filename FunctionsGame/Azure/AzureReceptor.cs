@@ -72,6 +72,20 @@ namespace Kalkatos.FunctionsGame.Azure
 			return responseSerialized;
 		}
 
+		[FunctionName(nameof(LeaveMatch))]
+		public static async Task<string> LeaveMatch (
+			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
+			ILogger log)
+		{
+			Logger.Setup(log);
+			log.LogWarning($"   [{nameof(LeaveMatch)}] Request = {requestSerialized}");
+			MatchRequest request = JsonConvert.DeserializeObject<MatchRequest>(requestSerialized);
+			Response response = await MatchFunctions.LeaveMatch(request);
+			string responseSerialized = JsonConvert.SerializeObject(response);
+			log.LogWarning($"   [{nameof(LeaveMatch)}] === {responseSerialized}");
+			return responseSerialized;
+		}
+
 		// ████████████████████████████████████████████ A C T I O N ████████████████████████████████████████████
 
 		[FunctionName(nameof(SendAction))]

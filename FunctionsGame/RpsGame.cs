@@ -24,6 +24,7 @@ namespace Kalkatos.FunctionsGame.Rps
 		private const string phaseKey = "Phase";
 		private const string handshakingKey = "Handshaking";
 		private const string myMoveKey = "MyMove";
+		private const string leaveMatchKey = "LeaveMatch";
 		private const string turnResultSyncKey = "TurnResultSync";
 		private const string turnStartedTimeKey = "TurnStartedTime";
 		private const string turnEndedTimeKey = "TurnEndedTime";
@@ -49,7 +50,7 @@ namespace Kalkatos.FunctionsGame.Rps
 		public bool IsActionAllowed (string playerId, ActionInfo action, MatchRegistry match, StateRegistry state)
 		{
 			bool result = !action.HasAnyPublicChange();
-			result &= action.OnlyHasThesePrivateChanges(handshakingKey, myMoveKey);
+			result &= action.OnlyHasThesePrivateChanges(handshakingKey, myMoveKey, leaveMatchKey);
 			if (IsInPlayPhase(state))
 				result &= action.IsPrivateChangeEqualsIfPresent(myMoveKey, allowedMoves);
 			return result;
@@ -78,6 +79,8 @@ namespace Kalkatos.FunctionsGame.Rps
 			StateRegistry newState = lastState.Clone();
 			DateTime utcNow = DateTime.UtcNow;
 			bool isFirstTurn = newState.TurnNumber == 0;
+			if (IsMatchEnded(newState))
+				return newState;
 
 			if (!isFirstTurn)
 			{
@@ -111,10 +114,7 @@ namespace Kalkatos.FunctionsGame.Rps
 							newState.UpsertPrivateProperties((playerId, turnResultSyncKey, newState.TurnNumber.ToString()));
 						if (HasBothPlayersGotResult(newState))
 						{
-							if (IsMatchEnded(newState))
-								return newState;
-							else
-								break;
+							break;
 						}
 						else if ((utcNow - turnEndedTime).TotalSeconds >= endTurnDelay + playerTimeout)
 						{
@@ -264,6 +264,22 @@ namespace Kalkatos.FunctionsGame.Rps
 			int p1Score = int.Parse(state.GetPrivate(playerList[0], myScoreKey));
 			int p2Score = int.Parse(state.GetPrivate(playerList[1], myScoreKey));
 			int matchWinner = (p1Score >= targetVictoryPoints) ? -1 : (p2Score >= targetVictoryPoints) ? 1 : 0;
+			if (state.HasPrivateProperty(playerList[0], leaveMatchKey))
+			{
+				if (!state.HasPrivateProperty(playerList[1], leaveMatchKey))
+					EndMatch(state, 1, true);
+				else
+					EndMatch(state, 0, true);
+				return true;
+			}
+			if (state.HasPrivateProperty(playerList[1], leaveMatchKey))
+			{
+				if (!state.HasPrivateProperty(playerList[0], leaveMatchKey))
+					EndMatch(state, -1, true);
+				else
+					EndMatch(state, 0, true);
+				return true;
+			}
 			if (matchWinner != 0)
 			{
 				EndMatch(state, matchWinner);
@@ -286,18 +302,18 @@ namespace Kalkatos.FunctionsGame.Rps
 				matchWinner = -1;
 			else if (playerList[1] == invoker)
 				matchWinner = 1;
-			EndMatch(state, matchWinner);
+			EndMatch(state, matchWinner, true);
 		}
 
-		private void EndMatch (StateRegistry state, int matchWinner)
+		private void EndMatch (StateRegistry state, int matchWinner, bool hasPlayerLeft = false)
 		{
 			string[] playerList = state.GetPlayers();
 			state.IsMatchEnded = true;
 			state.UpsertProperties(
 				idPrivateProperties: new (string id, string key, string value)[]
 				{
-					(playerList[0], matchWinnerKey, (matchWinner == 0 ? "Tie" : (matchWinner == 1 ? "Opponent" : "Me"))),
-					(playerList[1], matchWinnerKey, (matchWinner == 0 ? "Tie" : (matchWinner == 1 ? "Me" : "Opponent")))
+					(playerList[0], matchWinnerKey, (matchWinner == 0 ? "Tie" : (matchWinner == 1 ? "Opponent" : (hasPlayerLeft ? "OppRetreat" : "Me")))),
+					(playerList[1], matchWinnerKey, (matchWinner == 0 ? "Tie" : (matchWinner == -1 ? "Opponent" : (hasPlayerLeft ? "OppRetreat" : "Me"))))
 				},
 				publicProperties: new (string key, string value)[] { (phaseKey, ((int)Phase.Ended).ToString()) });
 		}
