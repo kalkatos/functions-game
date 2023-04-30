@@ -19,13 +19,9 @@ jobs:
     steps:
       - name: 'Checkout GitHub Action'
         uses: actions/checkout@v2
-
-      - name: Update submodule
-        env:
-          TOKEN: ${{ secrets.ACCESS_TOKEN }}
-        run: |
-          git submodule update --init --recursive
-          git submodule update --recursive --remote
+        with:
+          submodules: recursive
+          token: ${{ secrets.ACCESS_TOKEN }}
 
       - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
         uses: actions/setup-dotnet@v1
