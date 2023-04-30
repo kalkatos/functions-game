@@ -25,6 +25,11 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      - name: Update submodule
+        run: |
+          git submodule update --init --recursive
+          git submodule update --recursive --remote
+
       - name: 'Resolve Project Dependencies Using Dotnet'
         shell: pwsh
         run: |
