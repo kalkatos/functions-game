@@ -26,6 +26,7 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Update submodule
+        uses: actions/checkout@v2
         run: |
           git submodule update --init --recursive
           git submodule update --recursive --remote
