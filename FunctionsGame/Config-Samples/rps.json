@@ -1,7 +1,7 @@
 {
   "FirstCheckMatchDelay": 45,
   "RecurrentCheckMatchDelay": 60,
-  "FinalCheckMatchDelay": 4,
+  "FinalCheckMatchDelay": 30,
   "DefaultPlayerCustomData": {
     "Avatar": "0"
   },
