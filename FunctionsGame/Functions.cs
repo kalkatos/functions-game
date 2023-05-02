@@ -227,15 +227,30 @@ namespace Kalkatos.FunctionsGame
 				}
 				request.MatchId = playerEntry.MatchId;
 			}
-			var response = await SendAction(
-				new ActionRequest 
-				{ 
-					Action = new ActionInfo { PrivateChanges = new Dictionary<string, string> { { "LeaveMatch", "1" } } }, 
-					MatchId = request.MatchId, 
-					PlayerId = request.PlayerId 
-				});
-			_ = await GetMatchState(new StateRequest { MatchId = request.MatchId, PlayerId = request.PlayerId, LastHash = response.AlteredState.Hash });
-			return new Response { Message = $"Sent action to leave match {request.MatchId}." };
+
+			StateRegistry currentState = await service.GetState(request.MatchId);
+			if (currentState == null)
+				return new Response { IsError = true, Message = "Problem getting the match state." };
+			StateRegistry newState = currentState.Clone();
+			if (newState.HasPublicProperty("RetreatedPlayers"))
+				newState.UpsertPublicProperty("RetreatedPlayers", $"{newState.GetPublic("RetreatedPlayers")}|{request.PlayerId}");
+			newState.UpsertPublicProperty("RetreatedPlayers", request.PlayerId);
+			await service.SetState(request.MatchId, currentState, newState);
+			newState = await PrepareTurn (request.PlayerId, await service.GetMatchRegistry(request.MatchId), newState);
+
+			Logger.LogWarning("   [LeaveMatch] StateRegistry = = " + JsonConvert.SerializeObject(newState, Formatting.Indented));
+
+			return new Response { Message = $"Added player as retreated in {request.MatchId} successfully." };
+
+			//var response = await SendAction(
+			//	new ActionRequest 
+			//	{ 
+			//		Action = new ActionInfo { PrivateChanges = new Dictionary<string, string> { { "LeaveMatch", "1" } } }, 
+			//		MatchId = request.MatchId, 
+			//		PlayerId = request.PlayerId 
+			//	});
+			//_ = await GetMatchState(new StateRequest { MatchId = request.MatchId, PlayerId = request.PlayerId, LastHash = response.AlteredState.Hash });
+			//return new Response { Message = $"Sent action to leave match {request.MatchId}." };
 		}
 
 		public static async Task DeleteMatch (string matchId)
@@ -297,7 +312,7 @@ namespace Kalkatos.FunctionsGame
 					if (info.Hash == request.LastHash)
 						return new StateResponse { IsError = true, Message = "Current state is the same known state." };
 
-					Logger.LogWarning("   [GetMatchState] StateRegistry = = " + JsonConvert.SerializeObject(currentState));
+					Logger.LogWarning("   [GetMatchState] StateRegistry = = " + JsonConvert.SerializeObject(currentState, Formatting.Indented));
 
 					return new StateResponse { StateInfo = info };
 			}
@@ -420,6 +435,7 @@ namespace Kalkatos.FunctionsGame
 			{
 				match.Status = (int)MatchStatus.Ended;
 				await service.SetMatchRegistry(match);
+				await service.DeleteMatchmakingHistory(null, match.MatchId);
 				if (!await service.SetState(match.MatchId, lastState, newState))
 				{
 					Logger.LogError("   [PrepareTurn] States didn't match, retrying....");

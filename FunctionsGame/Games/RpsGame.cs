@@ -24,7 +24,7 @@ namespace Kalkatos.FunctionsGame.Rps
 		private const string phaseKey = "Phase";
 		private const string handshakingKey = "Handshaking";
 		private const string myMoveKey = "MyMove";
-		private const string leaveMatchKey = "LeaveMatch";
+		private const string retreatedPlayersKey = "RetreatedPlayers";
 		private const string turnResultSyncKey = "TurnResultSync";
 		private const string turnStartedTimeKey = "TurnStartedTime";
 		private const string turnEndedTimeKey = "TurnEndedTime";
@@ -50,7 +50,7 @@ namespace Kalkatos.FunctionsGame.Rps
 		public bool IsActionAllowed (string playerId, ActionInfo action, MatchRegistry match, StateRegistry state)
 		{
 			bool result = !action.HasAnyPublicChange();
-			result &= action.OnlyHasThesePrivateChanges(handshakingKey, myMoveKey, leaveMatchKey);
+			result &= action.OnlyHasThesePrivateChanges(handshakingKey, myMoveKey);
 			if (IsInPlayPhase(state))
 				result &= action.IsPrivateChangeEqualsIfPresent(myMoveKey, allowedMoves);
 			return result;
@@ -264,21 +264,25 @@ namespace Kalkatos.FunctionsGame.Rps
 			int p1Score = int.Parse(state.GetPrivate(playerList[0], myScoreKey));
 			int p2Score = int.Parse(state.GetPrivate(playerList[1], myScoreKey));
 			int matchWinner = (p1Score >= targetVictoryPoints) ? -1 : (p2Score >= targetVictoryPoints) ? 1 : 0;
-			if (state.HasPrivateProperty(playerList[0], leaveMatchKey))
+			if (state.HasPublicProperty(retreatedPlayersKey))
 			{
-				if (!state.HasPrivateProperty(playerList[1], leaveMatchKey))
-					EndMatch(state, 1, true);
-				else
-					EndMatch(state, 0, true);
-				return true;
-			}
-			if (state.HasPrivateProperty(playerList[1], leaveMatchKey))
-			{
-				if (!state.HasPrivateProperty(playerList[0], leaveMatchKey))
-					EndMatch(state, -1, true);
-				else
-					EndMatch(state, 0, true);
-				return true;
+				string[] retreatedPlayers = state.GetPublic(retreatedPlayersKey).Split('|');
+				if (Array.IndexOf(retreatedPlayers, playerList[0]) != -1)
+				{
+					if (Array.IndexOf(retreatedPlayers, playerList[1]) != -1)
+						EndMatch(state, 0, true);
+					else
+						EndMatch(state, 1, true);
+					return true;
+				}
+				if (Array.IndexOf(retreatedPlayers, playerList[1]) != -1)
+				{
+					if (Array.IndexOf(retreatedPlayers, playerList[0]) != -1)
+						EndMatch(state, 0, true);
+					else
+						EndMatch(state, -1, true);
+					return true;
+				}
 			}
 			if (matchWinner != 0)
 			{
