@@ -30,7 +30,7 @@ namespace Kalkatos.FunctionsGame
 		public static async Task<LoginResponse> LogIn (LoginRequest request)
 		{
 			if (string.IsNullOrEmpty(request.Identifier) || string.IsNullOrEmpty(request.GameId))
-				return new LoginResponse { IsError = true, Message = "Identifier is null. Must be an unique user identifier." };
+				return new LoginResponse { IsError = true, Message = "Wrong parameters. Identifier and GameId must not be null." };
 			GameRegistry gameRegistry = await service.GetGameConfig(request.GameId);
 			gameList[request.GameId].SetSettings(gameRegistry);
 			PlayerRegistry playerRegistry;
