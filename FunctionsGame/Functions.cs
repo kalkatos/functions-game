@@ -33,6 +33,9 @@ namespace Kalkatos.FunctionsGame
 				return new LoginResponse { IsError = true, Message = "Wrong parameters. Identifier and GameId must not be null." };
 			PlayerRegistry playerRegistry;
 			string playerId = await service.GetPlayerId(request.Identifier);
+			GameRegistry gameRegistry = await service.GetGameConfig(request.GameId);
+			gameList[request.GameId].SetSettings(gameRegistry);
+
 			if (string.IsNullOrEmpty(playerId))
 			{
 				playerId = Guid.NewGuid().ToString();
@@ -51,19 +54,20 @@ namespace Kalkatos.FunctionsGame
 				await service.SetPlayerRegistry(playerRegistry);
 			}
 			else
+			{
 				playerRegistry = await service.GetPlayerRegistry(playerId);
-
-			GameRegistry gameRegistry = await service.GetGameConfig(request.GameId);
-			gameList[request.GameId].SetSettings(gameRegistry);
-
-			bool mustRunLocally = await service.GetBool("MustRunLocally");
+				if (!playerRegistry.Devices.Contains(request.Identifier))
+				{
+					playerRegistry.Devices = (string[])playerRegistry.Devices.Append(request.Identifier);
+					await service.SetPlayerRegistry(playerRegistry);
+				}
+			}
 
 			return new LoginResponse
 			{
 				IsAuthenticated = playerRegistry.IsAuthenticated,
 				PlayerId = playerRegistry.PlayerId,
 				MyInfo = playerRegistry.Info,
-				MustRunLocally = mustRunLocally
 			};
 		}
 
