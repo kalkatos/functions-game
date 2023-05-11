@@ -16,7 +16,7 @@ namespace Kalkatos.FunctionsGame.Azure
 
 		[FunctionName(nameof(LogIn))]
 		public static async Task<string> LogIn (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
+			[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)] string requestSerialized,
 			ILogger log)
 		{
 			Logger.Setup(log);
@@ -30,7 +30,7 @@ namespace Kalkatos.FunctionsGame.Azure
 
 		[FunctionName(nameof(SetPlayerData))]
 		public static async Task<string> SetPlayerData (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
+			[HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] string requestSerialized,
 			ILogger log)
 		{
 			Logger.Setup(log);
@@ -42,11 +42,25 @@ namespace Kalkatos.FunctionsGame.Azure
 			return responseSerialized;
 		}
 
+		[FunctionName(nameof(GetGameSettings))]
+		public static async Task<string> GetGameSettings (
+			[HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)] string requestSerialized,
+			ILogger log)
+		{
+			Logger.Setup(log);
+			log.LogWarning($"   [{nameof(GetGameSettings)}] Request = {requestSerialized}");
+			GameDataRequest request = JsonConvert.DeserializeObject<GameDataRequest>(requestSerialized);
+			GameDataResponse response = await MatchFunctions.GetGameSettings(request);
+			string responseSerialized = JsonConvert.SerializeObject(response);
+			log.LogWarning($"   [{nameof(GetGameSettings)}] === {responseSerialized}");
+			return responseSerialized;
+		}
+
 		// ████████████████████████████████████████████ M A T C H M A K I N G ████████████████████████████████████████████
 
 		[FunctionName(nameof(FindMatch))]
 		public static async Task<string> FindMatch (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
+			[HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] string requestSerialized,
 			ILogger log)
 		{
 			Logger.Setup(log);
@@ -60,7 +74,7 @@ namespace Kalkatos.FunctionsGame.Azure
 
 		[FunctionName(nameof(GetMatch))]
 		public static async Task<string> GetMatch (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
+			[HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] string requestSerialized,
 			ILogger log)
 		{
 			Logger.Setup(log);
@@ -74,7 +88,7 @@ namespace Kalkatos.FunctionsGame.Azure
 
 		[FunctionName(nameof(LeaveMatch))]
 		public static async Task<string> LeaveMatch (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
+			[HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] string requestSerialized,
 			ILogger log)
 		{
 			Logger.Setup(log);
@@ -90,7 +104,7 @@ namespace Kalkatos.FunctionsGame.Azure
 
 		[FunctionName(nameof(SendAction))]
 		public static async Task<string> SendAction (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
+			[HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] string requestSerialized,
 			ILogger log
 			)
 		{
@@ -111,7 +125,7 @@ namespace Kalkatos.FunctionsGame.Azure
 		/// <returns> A serialized <typeparamref screenName="StateResponse"/> with the array of states or error message. </returns>
 		[FunctionName(nameof(GetMatchState))]
 		public static async Task<string> GetMatchState (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string requestSerialized,
+			[HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] string requestSerialized,
 			ILogger log
 			)
 		{
@@ -139,19 +153,9 @@ namespace Kalkatos.FunctionsGame.Azure
 			await MatchFunctions.CheckMatch(matchId, lastHash);
 		}
 
-		[FunctionName(nameof(DeleteMatchDebug))]
-		public static async Task DeleteMatchDebug (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string matchId,
-			ILogger log)
-		{
-			Logger.Setup(log);
-			log.LogWarning($"   [{nameof(DeleteMatchDebug)}] Deleting match: {matchId}");
-			await MatchFunctions.DeleteMatch(matchId);
-		}
-
 		[FunctionName(nameof(DeleteAllMatchesDebug))]
 		public static async Task DeleteAllMatchesDebug (
-			[HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)] string any,
+			[HttpTrigger(AuthorizationLevel.Admin, "get", Route = null)] string any,
 			[Blob("matches", Connection = "AzureWebJobsStorage")] IEnumerable<string> blobs,
 			ILogger log)
 		{
