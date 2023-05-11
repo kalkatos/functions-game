@@ -31,8 +31,6 @@ namespace Kalkatos.FunctionsGame
 		{
 			if (string.IsNullOrEmpty(request.Identifier) || string.IsNullOrEmpty(request.GameId))
 				return new LoginResponse { IsError = true, Message = "Wrong parameters. Identifier and GameId must not be null." };
-			GameRegistry gameRegistry = await service.GetGameConfig(request.GameId);
-			gameList[request.GameId].SetSettings(gameRegistry);
 			PlayerRegistry playerRegistry;
 			string playerId = await service.GetPlayerId(request.Identifier);
 			if (string.IsNullOrEmpty(playerId))
@@ -54,6 +52,9 @@ namespace Kalkatos.FunctionsGame
 			}
 			else
 				playerRegistry = await service.GetPlayerRegistry(playerId);
+
+			GameRegistry gameRegistry = await service.GetGameConfig(request.GameId);
+			gameList[request.GameId].SetSettings(gameRegistry);
 
 			bool mustRunLocally = await service.GetBool("MustRunLocally");
 
@@ -86,6 +87,17 @@ namespace Kalkatos.FunctionsGame
 				playerRegistry.Info.CustomData[item.Key] = item.Value;
 			await service.SetPlayerRegistry(playerRegistry);
 			return new Response { Message = "Ok" };
+		}
+
+		public static async Task<GameDataResponse> GetGameSettings (GameDataRequest request)
+		{
+			if (string.IsNullOrEmpty(request.GameId) || string.IsNullOrEmpty(request.PlayerId))
+				return new GameDataResponse { IsError = true, Message = "Wrong parameters." };
+			PlayerRegistry playerRegistry = await service.GetPlayerRegistry(request.PlayerId);
+			if (playerRegistry == null)
+				return new GameDataResponse { IsError = true, Message = "Player not registered." };
+			GameRegistry gameRegistry = await service.GetGameConfig(request.GameId);
+			return new GameDataResponse { Settings = gameRegistry.Settings };
 		}
 
 		// ████████████████████████████████████████████ A C T I O N ████████████████████████████████████████████
