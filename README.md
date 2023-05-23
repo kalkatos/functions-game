@@ -1,5 +1,4 @@
 # Functions Game Backend
 
-Backend for a turn-based game running on a serverless architecture. It is currently implemented for a rock-paper-scissors using Microsoft Azure, but is modular enough to allow changing the game and the service provider easily.
-
+Backend for a turn-based game running on a serverless architecture. The game implemented is rock-paper-scissors for the Azure Functions platform, but the code is modular enough to change the game and the service provider more easily.
 
