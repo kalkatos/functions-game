@@ -88,7 +88,8 @@ namespace Kalkatos.FunctionsGame
 			if (playerRegistry.Info.CustomData == null)
 				playerRegistry.Info.CustomData = new Dictionary<string, string>();
 			foreach (var item in request.Data)
-				playerRegistry.Info.CustomData[item.Key] = item.Value;
+				if (playerRegistry.Info.CustomData.ContainsKey(item.Key))
+					playerRegistry.Info.CustomData[item.Key] = item.Value;
 			await service.SetPlayerRegistry(playerRegistry);
 			return new Response { Message = "Ok" };
 		}
