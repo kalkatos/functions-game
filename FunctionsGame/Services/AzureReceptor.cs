@@ -1,11 +1,14 @@
-﻿using Azure.Data.Tables;
+﻿using Azure.Storage.Blobs.Specialized;
 using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace Kalkatos.FunctionsGame.Azure
@@ -165,6 +168,33 @@ namespace Kalkatos.FunctionsGame.Azure
 			{
 				MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(item);
 				await MatchFunctions.DeleteMatch(match.MatchId);
+			}
+		}
+
+		[FunctionName(nameof(AddDataToAllPlayersDebug))]
+		public static async Task AddDataToAllPlayersDebug (
+			[HttpTrigger(AuthorizationLevel.Admin, "post", Route = null)] string requestSerialized,
+			[Blob("players", Connection = "AzureWebJobsStorage")] IEnumerable<string> blobs,
+			ILogger log)
+		{
+			Logger.Setup(log);
+			log.LogWarning($"   [{nameof(AddDataToAllPlayersDebug)}] Adding data to all players.");
+			Dictionary<string, string> request = JsonConvert.DeserializeObject<Dictionary<string, string>>(requestSerialized);
+			if (request == null || request.Count == 0)
+				log.LogError("Request came out empty.");
+			foreach (var item in blobs)
+			{
+				PlayerRegistry registry = JsonConvert.DeserializeObject<PlayerRegistry>(item);
+				if (registry == null)
+					continue;
+				PlayerInfo info = registry.Info;
+				if (info.CustomData == null)
+					info.CustomData = new Dictionary<string, string>();
+				foreach (var data in request)
+					info.CustomData[data.Key] = data.Value;
+				BlockBlobClient playerBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{registry.PlayerId}.json");
+				using (Stream stream = await playerBlob.OpenWriteAsync(true))
+					stream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(registry)));
 			}
 		}
 	}
