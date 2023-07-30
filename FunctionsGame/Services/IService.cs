@@ -1,4 +1,6 @@
 ﻿using Kalkatos.FunctionsGame.Registry;
+using Kalkatos.Network.Model;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Kalkatos.FunctionsGame
@@ -14,13 +16,13 @@ namespace Kalkatos.FunctionsGame
 		Task SetPlayerRegistry (PlayerRegistry registry);
 		Task DeletePlayerRegistry (string playerId);
 		// Matchmaking
-		Task<MatchmakingEntry[]> GetMatchmakingEntries (string region, string playerId, string matchId, MatchmakingStatus status);
+		Task<MatchmakingEntry[]> GetMatchmakingEntries (string region, string matchId, string playerId, MatchmakingStatus status);
 		Task UpsertMatchmakingEntry (MatchmakingEntry entry);
 		Task DeleteMatchmakingHistory (string playerId, string matchId);
 		// Action
-		//Task<ActionRegistry> GetAction (string playerId, string matchId);
-		//Task SetAction (string playerId, string matchId, ActionRegistry action);
-		//Task DeleteAction (string playerId, string matchId);
+		Task AddAction (string matchId, string playerId, ActionRegistry action);
+        Task<List<ActionRegistry>> GetActions (string matchId);
+        Task UpdateActions (string matchId, List<ActionRegistry> actionList);
 		// Match
 		Task<MatchRegistry> GetMatchRegistry (string matchId);
 		Task SetMatchRegistry (MatchRegistry matchRegistry);

@@ -2,7 +2,7 @@
 
 namespace Kalkatos.FunctionsGame.Registry
 {
-	public class GameRegistry
+    public class GameRegistry
     {
         public int FirstCheckMatchDelay;
         public int RecurrentCheckMatchDelay;

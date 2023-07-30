@@ -120,7 +120,34 @@ namespace Kalkatos.FunctionsGame
 				return new ActionResponse { IsError = true, Message = "Player is not on that match." };
 			if (match.Status == (int)MatchStatus.Ended)
 				return new ActionResponse { IsError = true, Message = "Match is over." };
-			StateRegistry newState = null;
+            StateRegistry state = await service.GetState(request.MatchId);
+            if (!gameList[match.GameId].IsActionAllowed(request.PlayerId, request.Action, match, state))
+                return new ActionResponse { IsError = true, Message = "Action is not allowed." };
+
+			// Action Duplicate Protection
+
+			int requestActionHash = Helper.GetHash(request.Action.PrivateChanges, request.Action.PublicChanges);
+			//List<ActionRegistry> registeredActions = await service.GetActions(request.MatchId, request.PlayerId);
+			//foreach (var action in registeredActions)
+			//{
+			//	if (action.Hash == requestActionHash)
+			//		return new ActionResponse { IsError = true, Message = "Action is already registered." };
+			//}
+
+
+			await service.AddAction(request.MatchId, request.PlayerId, 
+				new ActionRegistry 
+				{ 
+					MatchId = request.MatchId, 
+					PlayerId = request.PlayerId, 
+					Action = request.Action, 
+					Hash = requestActionHash
+                });
+            return new ActionResponse { Message = "Action registered successfully." };
+
+
+			/*
+            StateRegistry newState = null;
 			for (int attempt = 0; attempt <= 5; ++attempt)
 			{
 				if (attempt >= 5)
@@ -152,6 +179,7 @@ namespace Kalkatos.FunctionsGame
 			}
 			Logger.LogWarning($"   [SendAction] State after action = {JsonConvert.SerializeObject(newState, Formatting.Indented)}");
 			return new ActionResponse { AlteredState = newState.GetStateInfo(request.PlayerId), Message = "Action registered successfully." };
+			*/
 		}
 
 		// ████████████████████████████████████████████ M A T C H ████████████████████████████████████████████
@@ -160,7 +188,7 @@ namespace Kalkatos.FunctionsGame
 		{
 			if (request == null || string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.Region) || string.IsNullOrEmpty(request.GameId))
 				return new MatchResponse { IsError = true, Message = "Wrong Parameters." };
-			MatchmakingEntry[] entries = await service.GetMatchmakingEntries(request.Region, request.PlayerId, null, MatchmakingStatus.Undefined);
+			MatchmakingEntry[] entries = await service.GetMatchmakingEntries(request.Region, null, request.PlayerId, MatchmakingStatus.Undefined);
 			if (entries != null && entries.Length > 1)
 				foreach (MatchmakingEntry entry in entries)
 					await service.DeleteMatchmakingHistory(entry.PlayerId, entry.MatchId);
@@ -189,7 +217,7 @@ namespace Kalkatos.FunctionsGame
 				for (int attempt = 1; attempt <= 2; attempt++)
 				{
 					// Get the match id of the match assigned to the player or find matches
-					MatchmakingEntry[] entries = await service.GetMatchmakingEntries(null, request.PlayerId, null, MatchmakingStatus.Undefined);
+					MatchmakingEntry[] entries = await service.GetMatchmakingEntries(null, null, request.PlayerId, MatchmakingStatus.Undefined);
 					if (entries == null || entries.Length == 0)
 						return new MatchResponse { IsError = true, Message = $"Didn't find any match for player." };
 					if (entries.Length > 1)
@@ -230,7 +258,7 @@ namespace Kalkatos.FunctionsGame
 
 			if (string.IsNullOrEmpty(request.MatchId))
 			{
-				MatchmakingEntry[] entries = await service.GetMatchmakingEntries(null, request.PlayerId, null, MatchmakingStatus.Undefined);
+				MatchmakingEntry[] entries = await service.GetMatchmakingEntries(null, null, request.PlayerId, MatchmakingStatus.Undefined);
 				if (entries == null || entries.Length == 0)
 					return new Response { IsError = true, Message = $"Didn't find any match for player." };
 				MatchmakingEntry playerEntry = default;
@@ -258,16 +286,6 @@ namespace Kalkatos.FunctionsGame
 			Logger.LogWarning("   [LeaveMatch] StateRegistry = = " + JsonConvert.SerializeObject(newState, Formatting.Indented));
 
 			return new Response { Message = $"Added player as retreated in {request.MatchId} successfully." };
-
-			//var response = await SendAction(
-			//	new ActionRequest 
-			//	{ 
-			//		Action = new ActionInfo { PrivateChanges = new Dictionary<string, string> { { "LeaveMatch", "1" } } }, 
-			//		MatchId = request.MatchId, 
-			//		PlayerId = request.PlayerId 
-			//	});
-			//_ = await GetMatchState(new StateRequest { MatchId = request.MatchId, PlayerId = request.PlayerId, LastHash = response.AlteredState.Hash });
-			//return new Response { Message = $"Sent action to leave match {request.MatchId}." };
 		}
 
 		public static async Task DeleteMatch (string matchId)
@@ -447,7 +465,9 @@ namespace Kalkatos.FunctionsGame
 		{
 			if (lastState == null)
 				Logger.LogError("   [PrepareTurn] Last state should not be null.");
-			StateRegistry newState = gameList[match.GameId].PrepareTurn(requesterId, match, lastState);
+			List<ActionRegistry> actions = await service.GetActions(match.MatchId);
+			StateRegistry newState = gameList[match.GameId].PrepareTurn(requesterId, match, lastState, actions);
+			await service.UpdateActions(match.MatchId, actions);
 			if (newState.IsMatchEnded && match.Status != (int)MatchStatus.Ended)
 			{
 				match.Status = (int)MatchStatus.Ended;

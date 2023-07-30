@@ -3,6 +3,7 @@ using Azure.Data.Tables;
 using Azure.Storage.Blobs.Specialized;
 using Azure.Storage.Queues;
 using Kalkatos.FunctionsGame.Registry;
+using Kalkatos.Network.Model;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -23,7 +24,7 @@ namespace Kalkatos.FunctionsGame.Azure
 			BlockBlobClient identifierFile = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "games", $"{gameId}.json");
 			if (await identifierFile.ExistsAsync())
 				using (Stream stream = await identifierFile.OpenReadAsync())
-					return JsonConvert.DeserializeObject<GameRegistry>(Helper.ReadBytes(stream));
+					return JsonConvert.DeserializeObject<GameRegistry>(Helper.ReadBytes(stream, Encoding.UTF8));
 			return null;
 		}
 
@@ -34,7 +35,7 @@ namespace Kalkatos.FunctionsGame.Azure
 			BlockBlobClient identifierFile = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{deviceId}");
 			if (await identifierFile.ExistsAsync())
 				using (Stream stream = await identifierFile.OpenReadAsync())
-					return Helper.ReadBytes(stream);
+					return Helper.ReadBytes(stream, Encoding.UTF8);
 			return null;
 		}
 
@@ -42,7 +43,7 @@ namespace Kalkatos.FunctionsGame.Azure
 		{
 			BlockBlobClient identifierFile = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{deviceId}");
 			using (Stream stream = await identifierFile.OpenWriteAsync(true))
-				stream.Write(Encoding.ASCII.GetBytes(playerId));
+				stream.Write(Encoding.UTF8.GetBytes(playerId));
 		}
 
 		public async Task<PlayerRegistry> GetPlayerRegistry (string playerId)
@@ -50,7 +51,7 @@ namespace Kalkatos.FunctionsGame.Azure
 			BlockBlobClient playerBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{playerId}.json");
 			if (await playerBlob.ExistsAsync())
 				using (Stream stream = await playerBlob.OpenReadAsync())
-					return JsonConvert.DeserializeObject<PlayerRegistry>(Helper.ReadBytes(stream));
+					return JsonConvert.DeserializeObject<PlayerRegistry>(Helper.ReadBytes(stream, Encoding.UTF8));
 			return null;
 		}
 
@@ -58,7 +59,7 @@ namespace Kalkatos.FunctionsGame.Azure
 		{
 			BlockBlobClient playerBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{registry.PlayerId}.json");
 			using (Stream stream = await playerBlob.OpenWriteAsync(true))
-				stream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(registry)));
+				stream.Write(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(registry)));
 		}
 
 		public async Task DeletePlayerRegistry (string playerId)
@@ -70,7 +71,7 @@ namespace Kalkatos.FunctionsGame.Azure
 
 		// ████████████████████████████████████████████ M A T C H M A K I N G ████████████████████████████████████████████
 
-		public async Task<MatchmakingEntry[]> GetMatchmakingEntries (string region, string playerId, string matchId, MatchmakingStatus status)
+		public async Task<MatchmakingEntry[]> GetMatchmakingEntries (string region, string matchId, string playerId, MatchmakingStatus status)
 		{
 			await Task.Delay(1);
 			TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Matchmaking");
@@ -140,7 +141,7 @@ namespace Kalkatos.FunctionsGame.Azure
 			BlockBlobClient matchBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "matches", $"{matchId}.json");
 			if (await matchBlob.ExistsAsync())
 				using (Stream stream = await matchBlob.OpenReadAsync(true))
-					return JsonConvert.DeserializeObject<MatchRegistry>(Helper.ReadBytes(stream));
+					return JsonConvert.DeserializeObject<MatchRegistry>(Helper.ReadBytes(stream, Encoding.UTF8));
 			return null;
 		}
 
@@ -161,7 +162,7 @@ namespace Kalkatos.FunctionsGame.Azure
 			try
 			{
 				using (Stream stream = await matchBlob.OpenWriteAsync(true))
-					stream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(matchRegistry)));
+					stream.Write(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(matchRegistry)));
 			}
 			catch { }
 		}
@@ -182,7 +183,7 @@ namespace Kalkatos.FunctionsGame.Azure
 			StateRegistry state = null;
 			if (await stateBlob.ExistsAsync())
 				using (Stream stream = await stateBlob.OpenReadAsync())
-					state = JsonConvert.DeserializeObject<StateRegistry>(Helper.ReadBytes(stream));
+					state = JsonConvert.DeserializeObject<StateRegistry>(Helper.ReadBytes(stream, Encoding.UTF8));
 			else
 				Logger.LogError($"   [GetState] State does not exist.");
 			state?.UpdateHash();
@@ -209,7 +210,7 @@ namespace Kalkatos.FunctionsGame.Azure
 						return false;
 					}
 					using (Stream stream = await stateBlob.OpenWriteAsync(true))
-						stream.Write(Encoding.ASCII.GetBytes(JsonConvert.SerializeObject(newState)));
+						stream.Write(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(newState)));
 					stateSetSuccessfully = true;
 				}
 				catch
@@ -231,16 +232,53 @@ namespace Kalkatos.FunctionsGame.Azure
 			catch { }
 		}
 
-		// ████████████████████████████████████████████ O T H E R ████████████████████████████████████████████
+		// ████████████████████████████████████████████ A C T I O N ████████████████████████████████████████████
 
-		public async Task<bool> GetBool (string key)
+		public async Task AddAction (string matchId, string playerId, ActionRegistry action)
+		{
+            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Actions");
+			await tableClient.AddEntityAsync(
+				new ActionEntity 
+				{ 
+					PartitionKey = matchId, 
+					RowKey = Guid.NewGuid().ToString(), 
+					PlayerId = playerId, 
+					SerializedAction = JsonConvert.SerializeObject(action) 
+				});
+		}
+
+		public async Task UpdateActions (string matchId, List<ActionRegistry> actionList)
+		{
+            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Actions");
+			var query = tableClient.QueryAsync<ActionEntity>(t => t.PartitionKey == matchId);
+			await foreach (var item in query)
+				tableClient.DeleteEntity(item.PartitionKey, item.RowKey);
+			foreach (var item in actionList)
+				await AddAction(item.PlayerId, matchId, item);
+        }
+
+		public async Task<List<ActionRegistry>> GetActions (string matchId)
+		{
+			List<ActionRegistry> resultList = new List<ActionRegistry>();
+            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Actions");
+            var query = tableClient.QueryAsync<ActionEntity>(t => t.PartitionKey == matchId);
+			if (query == null)
+				return resultList;
+			await foreach (var item in query)
+				resultList.Add(JsonConvert.DeserializeObject<ActionRegistry>(item.SerializedAction));
+			return resultList;
+        }
+
+        // ████████████████████████████████████████████ O T H E R ████████████████████████████████████████████
+
+        public async Task<bool> GetBool (string key)
 		{
 			BlockBlobClient dataBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "rules", "data.json");
 			Dictionary<string, string> dataDict = null;
 			if (await dataBlob.ExistsAsync())
 				using (Stream stream = await dataBlob.OpenReadAsync())
 				{
-					dataDict = JsonConvert.DeserializeObject<Dictionary<string, string>>(Helper.ReadBytes(stream));
+					dataDict = JsonConvert.DeserializeObject<Dictionary<string, string>>(Helper.ReadBytes(stream, Encoding.UTF8));
 					if (dataDict.ContainsKey(key))
 						return dataDict[key] == "1";
 				}
@@ -281,7 +319,18 @@ namespace Kalkatos.FunctionsGame.Azure
 		}
 	}
 
-	public class ErrorEntity : ITableEntity
+    public class ActionEntity : ITableEntity
+    {
+		public string PartitionKey { get; set; } // Match ID
+		public string RowKey { get; set; } // Random ID
+        public string PlayerId { get; set; }
+        public string SerializedAction { get; set; }
+        public DateTimeOffset? Timestamp { get; set; }
+        public ETag ETag { get; set; }
+    }
+
+
+    public class ErrorEntity : ITableEntity
 	{
 		public string PartitionKey { get; set; } // Group
 		public string RowKey { get; set; } // ID

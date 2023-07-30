@@ -1,6 +1,7 @@
 ﻿using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
 using System;
+using System.Collections.Generic;
 
 namespace Kalkatos.FunctionsGame.Rps
 {
@@ -74,7 +75,7 @@ namespace Kalkatos.FunctionsGame.Rps
 			return newState;
 		}
 
-		public StateRegistry PrepareTurn (string playerId, MatchRegistry match, StateRegistry lastState)
+		public StateRegistry PrepareTurn (string playerId, MatchRegistry match, StateRegistry lastState, List<ActionRegistry> actions)
 		{
 			StateRegistry newState = lastState.Clone();
 			DateTime utcNow = DateTime.UtcNow;
@@ -82,8 +83,17 @@ namespace Kalkatos.FunctionsGame.Rps
 			if (IsMatchEnded(newState))
 				return newState;
 
+			// Treat actions
+			foreach (var item in actions)
+			{
+				newState.UpsertPublicProperties(item.Action.PublicChanges);
+				newState.UpsertPrivateProperties(item.PlayerId, item.Action.PrivateChanges);
+			}
+			actions.Clear();
+
 			if (!isFirstTurn)
 			{
+
 				DateTime turnStartedTime = ExtractTime(turnStartedTimeKey, lastState);
 				DateTime turnEndedTime = ExtractTime(turnEndedTimeKey, lastState);
 
