@@ -3,7 +3,10 @@
   "RecurrentCheckMatchDelay": 60,
   "FinalCheckMatchDelay": 30,
   "DefaultPlayerCustomData": {
-    "Avatar": "0"
+    "Avatar": "0",
+    "RockImage": "0",
+    "PaperImage": "0",
+    "ScissorsImage": "0"
   },
   "Settings": {
     "FirstTurnDelay": "30",

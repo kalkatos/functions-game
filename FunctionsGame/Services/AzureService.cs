@@ -3,7 +3,6 @@ using Azure.Data.Tables;
 using Azure.Storage.Blobs.Specialized;
 using Azure.Storage.Queues;
 using Kalkatos.FunctionsGame.Registry;
-using Kalkatos.Network.Model;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;

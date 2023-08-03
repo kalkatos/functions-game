@@ -303,7 +303,7 @@ namespace Kalkatos.FunctionsGame
 			StateRegistry state = await service.GetState(matchId);
 			if (state == null)
 				return;
-			if (!HasHandshakingFromAllPlayers(state) || state.Hash == lastHash)
+			if (!HasHandshakingFromAllPlayers(state, await service.GetActions(matchId)) || state.Hash == lastHash)
 				await DeleteMatch(matchId);
 			else
 			{
@@ -327,22 +327,23 @@ namespace Kalkatos.FunctionsGame
 			if (!match.HasPlayer(request.PlayerId))
 				return new StateResponse { IsError = true, Message = "Player is not on that match." };
 			StateRegistry currentState = await service.GetState(request.MatchId);
-			if (!HasHandshakingFromAllPlayers(currentState))
-				return new StateResponse { IsError = true, Message = "Not every player is ready." };
+			List<ActionRegistry> actions = await service.GetActions(request.MatchId);
 			switch (match.Status)
 			{
 				case (int)MatchStatus.AwaitingPlayers:
+					if (!HasHandshakingFromAllPlayers(currentState, actions))
+						return new StateResponse { IsError = true, Message = "Not every player is ready." };
 					match.Status = (int)MatchStatus.Started;
 					match.StartTime = DateTime.UtcNow;
 					await service.SetMatchRegistry(match);
-					currentState = await PrepareTurn(request.PlayerId, match, currentState);
+					currentState = await PrepareTurn(request.PlayerId, match, currentState, actions);
 
 					Logger.LogWarning("   [GetMatchState] StateRegistry = = " + JsonConvert.SerializeObject(currentState, Formatting.Indented));
 
 					return new StateResponse { StateInfo = currentState.GetStateInfo(request.PlayerId) };
 				case (int)MatchStatus.Started:
 				case (int)MatchStatus.Ended:
-					currentState = await PrepareTurn(request.PlayerId, match, currentState);
+					currentState = await PrepareTurn(request.PlayerId, match, currentState, actions);
 					StateInfo info = currentState.GetStateInfo(request.PlayerId);
 					if (info.Hash == request.LastHash)
 						return new StateResponse { IsError = true, Message = "Current state is the same known state." };
@@ -461,11 +462,12 @@ namespace Kalkatos.FunctionsGame
 			return newState;
 		}
 
-		private static async Task<StateRegistry> PrepareTurn (string requesterId, MatchRegistry match, StateRegistry lastState)
+		private static async Task<StateRegistry> PrepareTurn (string requesterId, MatchRegistry match, StateRegistry lastState, List<ActionRegistry> actions = null)
 		{
 			if (lastState == null)
 				Logger.LogError("   [PrepareTurn] Last state should not be null.");
-			List<ActionRegistry> actions = await service.GetActions(match.MatchId);
+            if (actions == null)
+				actions = await service.GetActions(match.MatchId);
 			StateRegistry newState = gameList[match.GameId].PrepareTurn(requesterId, match, lastState, actions);
 			await service.UpdateActions(match.MatchId, actions);
 			if (newState.IsMatchEnded && match.Status != (int)MatchStatus.Ended)
@@ -476,7 +478,7 @@ namespace Kalkatos.FunctionsGame
 				if (!await service.SetState(match.MatchId, lastState, newState))
 				{
 					Logger.LogError("   [PrepareTurn] States didn't match, retrying....");
-					return await PrepareTurn(requesterId, match, await service.GetState(match.MatchId));
+					return await PrepareTurn(requesterId, match, await service.GetState(match.MatchId), actions);
 				}
 				GameRegistry gameRegistry = await service.GetGameConfig(match.GameId);
 				await service.ScheduleCheckMatch(gameRegistry.FinalCheckMatchDelay * 1000, match.MatchId, newState.Hash);
@@ -487,29 +489,24 @@ namespace Kalkatos.FunctionsGame
 			if (!await service.SetState(match.MatchId, lastState, newState))
 			{
 				Logger.LogError("   [PrepareTurn] States didn't match, retrying....");
-				return await PrepareTurn(requesterId, match, await service.GetState(match.MatchId));
+				return await PrepareTurn(requesterId, match, await service.GetState(match.MatchId), actions);
 			}
 			return newState;
 		}
 
-		private static bool HasHandshakingFromAllPlayers (StateRegistry state)
+		private static bool HasHandshakingFromAllPlayers (StateRegistry state, List<ActionRegistry> actions)
 		{
-			if (state == null)
-			{
-				Logger.LogError($"   [HasHandshakingFromAllPlayers] State is null");
-				return false;
-			}
-			var players = state.GetPlayers();
-			int count = 0;
+			string[] players = state.GetPlayers();
+            int count = 0;
 			string playersWithHandshaking = "";
 			foreach (var player in players)
-				if (player[0] == 'X' || !string.IsNullOrEmpty(state.GetPrivate(player, "Handshaking")))
+				if (player[0] == 'X' || !string.IsNullOrEmpty(state.GetPrivate(player, "Handshaking")) || actions.Find(x => x.PlayerId == player && x.Action.IsPrivateChangeEqualsIfPresent("Handshaking", "1")) != null)
 				{
 					count++;
 					playersWithHandshaking += $"| {player}";
 				}
 			if (count != players.Length)
-				Logger.LogError($"   [HasHandshakingFromAllPlayers] Player with handshaking = {count} = {playersWithHandshaking}\n{JsonConvert.SerializeObject(state, Formatting.Indented)}");
+				Logger.LogError($"   [HasHandshakingFromAllPlayers] Player with handshaking = {count} = {playersWithHandshaking}\n{JsonConvert.SerializeObject(actions, Formatting.Indented)}");
 			return count == players.Length;
 		}
 

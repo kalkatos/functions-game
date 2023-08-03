@@ -2,8 +2,7 @@
   "profiles": {
     "FunctionsGame": {
       "commandName": "Project",
-      "commandLineArgs": "--port 7089",
-      "launchBrowser": false
+      "commandLineArgs": "--port 7089 --csharp"
     }
   }
 }
