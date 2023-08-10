@@ -235,7 +235,7 @@ namespace Kalkatos.FunctionsGame.Azure
 
 		public async Task AddAction (string matchId, string playerId, ActionRegistry action)
 		{
-            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Actions");
+			TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Actions");
 			await tableClient.AddEntityAsync(
 				new ActionEntity 
 				{ 
@@ -248,29 +248,29 @@ namespace Kalkatos.FunctionsGame.Azure
 
 		public async Task UpdateActions (string matchId, List<ActionRegistry> actionList)
 		{
-            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Actions");
+			TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Actions");
 			var query = tableClient.QueryAsync<ActionEntity>(t => t.PartitionKey == matchId);
 			await foreach (var item in query)
 				tableClient.DeleteEntity(item.PartitionKey, item.RowKey);
 			foreach (var item in actionList)
 				await AddAction(item.PlayerId, matchId, item);
-        }
+		}
 
 		public async Task<List<ActionRegistry>> GetActions (string matchId)
 		{
 			List<ActionRegistry> resultList = new List<ActionRegistry>();
-            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Actions");
-            var query = tableClient.QueryAsync<ActionEntity>(t => t.PartitionKey == matchId);
+			TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Actions");
+			var query = tableClient.QueryAsync<ActionEntity>(t => t.PartitionKey == matchId);
 			if (query == null)
 				return resultList;
 			await foreach (var item in query)
 				resultList.Add(JsonConvert.DeserializeObject<ActionRegistry>(item.SerializedAction));
 			return resultList;
-        }
+		}
 
-        // ████████████████████████████████████████████ O T H E R ████████████████████████████████████████████
+		// ████████████████████████████████████████████ O T H E R ████████████████████████████████████████████
 
-        public async Task<bool> GetBool (string key)
+		public async Task<bool> GetBool (string key)
 		{
 			BlockBlobClient dataBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "rules", "data.json");
 			Dictionary<string, string> dataDict = null;
@@ -318,18 +318,18 @@ namespace Kalkatos.FunctionsGame.Azure
 		}
 	}
 
-    public class ActionEntity : ITableEntity
-    {
+	public class ActionEntity : ITableEntity
+	{
 		public string PartitionKey { get; set; } // Match ID
 		public string RowKey { get; set; } // Random ID
-        public string PlayerId { get; set; }
-        public string SerializedAction { get; set; }
-        public DateTimeOffset? Timestamp { get; set; }
-        public ETag ETag { get; set; }
-    }
+		public string PlayerId { get; set; }
+		public string SerializedAction { get; set; }
+		public DateTimeOffset? Timestamp { get; set; }
+		public ETag ETag { get; set; }
+	}
 
 
-    public class ErrorEntity : ITableEntity
+	public class ErrorEntity : ITableEntity
 	{
 		public string PartitionKey { get; set; } // Group
 		public string RowKey { get; set; } // ID

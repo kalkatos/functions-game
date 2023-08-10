@@ -120,9 +120,9 @@ namespace Kalkatos.FunctionsGame
 				return new ActionResponse { IsError = true, Message = "Player is not on that match." };
 			if (match.Status == (int)MatchStatus.Ended)
 				return new ActionResponse { IsError = true, Message = "Match is over." };
-            StateRegistry state = await service.GetState(request.MatchId);
-            if (!gameList[match.GameId].IsActionAllowed(request.PlayerId, request.Action, match, state))
-                return new ActionResponse { IsError = true, Message = "Action is not allowed." };
+			StateRegistry state = await service.GetState(request.MatchId);
+			if (!gameList[match.GameId].IsActionAllowed(request.PlayerId, request.Action, match, state))
+				return new ActionResponse { IsError = true, Message = "Action is not allowed." };
 
 			// Action Duplicate Protection
 
@@ -142,12 +142,12 @@ namespace Kalkatos.FunctionsGame
 					PlayerId = request.PlayerId, 
 					Action = request.Action, 
 					Hash = requestActionHash
-                });
-            return new ActionResponse { Message = "Action registered successfully." };
+				});
+			return new ActionResponse { Message = "Action registered successfully." };
 
 
 			/*
-            StateRegistry newState = null;
+			StateRegistry newState = null;
 			for (int attempt = 0; attempt <= 5; ++attempt)
 			{
 				if (attempt >= 5)
@@ -466,7 +466,7 @@ namespace Kalkatos.FunctionsGame
 		{
 			if (lastState == null)
 				Logger.LogError("   [PrepareTurn] Last state should not be null.");
-            if (actions == null)
+			if (actions == null)
 				actions = await service.GetActions(match.MatchId);
 			StateRegistry newState = gameList[match.GameId].PrepareTurn(requesterId, match, lastState, actions);
 			await service.UpdateActions(match.MatchId, actions);
@@ -497,7 +497,7 @@ namespace Kalkatos.FunctionsGame
 		private static bool HasHandshakingFromAllPlayers (StateRegistry state, List<ActionRegistry> actions)
 		{
 			string[] players = state.GetPlayers();
-            int count = 0;
+			int count = 0;
 			string playersWithHandshaking = "";
 			foreach (var player in players)
 				if (player[0] == 'X' || !string.IsNullOrEmpty(state.GetPrivate(player, "Handshaking")) || actions.Find(x => x.PlayerId == player && x.Action.IsPrivateChangeEqualsIfPresent("Handshaking", "1")) != null)
