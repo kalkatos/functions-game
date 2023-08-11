@@ -9,6 +9,7 @@ namespace Kalkatos.FunctionsGame.Registry
         public int FinalCheckMatchDelay;
         public Dictionary<string, string> DefaultPlayerCustomData;
         public Dictionary<string, string> Settings;
+        public Dictionary<string, string> BotSettings;
 
         public bool HasSetting (string key)
         { 

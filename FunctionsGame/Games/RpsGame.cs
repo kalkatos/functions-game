@@ -35,6 +35,8 @@ namespace Kalkatos.FunctionsGame.Rps
 		private const string myScoreKey = "MyScore";
 		private const string opponentScoreKey = "OpponentScore";
 
+		// ████████████████████████████████████████████ P U B L I C ████████████████████████████████████████████
+
 		public void SetSettings (GameRegistry gameRegistry)
 		{
 			var settings = gameRegistry.Settings;
@@ -154,6 +156,29 @@ namespace Kalkatos.FunctionsGame.Rps
 				});
 			return newState;
 		}
+
+		public PlayerInfo CreateBot (Dictionary<string, string> settings)
+		{
+			Random rand = new Random();
+			int numberOfImages = 10;
+			var customData = new Dictionary<string, string> { { "Avatar", rand.Next(13).ToString() } };
+			string randomImageIndex = rand.Next(numberOfImages).ToString();
+			string[] indexes = new string[] { randomImageIndex, randomImageIndex, randomImageIndex};
+			int changeAmount = Math.Max(0, rand.Next(6) - 3);
+			for (int i = 0; i < changeAmount; i++)
+				indexes[rand.Next(3)] = rand.Next(numberOfImages).ToString();
+			customData.Add("RockImage", indexes[0]);
+			customData.Add("PaperImage", indexes[1]);
+			customData.Add("ScissorsImage", indexes[2]);
+			return new PlayerInfo
+			{
+				Alias = Guid.NewGuid().ToString(),
+				Nickname = MatchFunctions.GetRandomNickname_AdjectiveNoun(),
+				CustomData = customData
+			};
+		}
+
+		// ████████████████████████████████████████████ P R I V A T E ████████████████████████████████████████████
 
 		private DateTime ExtractTime (string key, StateRegistry state)
 		{

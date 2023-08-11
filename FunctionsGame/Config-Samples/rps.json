@@ -1,6 +1,6 @@
 {
   "FirstCheckMatchDelay": 45,
-  "RecurrentCheckMatchDelay": 60,
+  "RecurrentCheckMatchDelay": 30,
   "FinalCheckMatchDelay": 30,
   "DefaultPlayerCustomData": {
     "Avatar": "0",
@@ -9,14 +9,24 @@
     "ScissorsImage": "0"
   },
   "Settings": {
-    "FirstTurnDelay": "30",
-    "PlayPhaseStartDelay": "5",
-    "TurnDuration": "10",
-    "EndTurnDelay": "5",
-    "TargetVictoryPoints": "2",
-
     "MaxWait": "6",
     "PlayerCount": "2",
-    "ActionForNoPlayers": "MatchWithBots"
-  }
+    "ActionForNoPlayers": "MatchWithBots",
+
+    "FirstTurnDelay": "30",
+    "TurnDuration": "20",
+    "EndTurnDelay": "15",
+    "PlayerTimeout": "20",
+    "TargetVictoryPoints": "2",
+
+    "SetPlayerData": "SetPlayerData?code=XYZ==",
+    "LogIn": "LogIn",
+    "FindMatch": "FindMatch?code=XYZ==",
+    "GetMatch": "GetMatch?code=XYZ==",
+    "LeaveMatch": "LeaveMatch?code=XYZ==",
+    "SendAction": "SendAction?code=XYZ==",
+    "GetMatchState": "GetMatchState?code=XYZ==",
+    "GetGameSettings": "GetGameSettings"
+  },
+  "BotSettings": {}
 }

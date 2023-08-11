@@ -10,5 +10,6 @@ namespace Kalkatos.FunctionsGame
 		bool IsActionAllowed (string playerId, ActionInfo action, MatchRegistry match, StateRegistry state);
 		StateRegistry CreateFirstState (MatchRegistry match);
 		StateRegistry PrepareTurn (string playerId, MatchRegistry match, StateRegistry lastState, List<ActionRegistry> actions);
+		PlayerInfo CreateBot (Dictionary<string, string> settings);
 	}
 }
