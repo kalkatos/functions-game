@@ -1,5 +1,4 @@
 ﻿using Kalkatos.FunctionsGame.Registry;
-using Kalkatos.Network.Model;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 

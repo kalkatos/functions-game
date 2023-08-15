@@ -41,7 +41,7 @@ namespace Kalkatos.FunctionsGame
 				playerId = Guid.NewGuid().ToString();
 				await service.RegisterDeviceWithId(request.Identifier, playerId);
 				string newPlayerAlias = Guid.NewGuid().ToString();
-				PlayerInfo newPlayerInfo = new PlayerInfo { Alias = newPlayerAlias, Nickname = request.Nickname, CustomData = gameRegistry.DefaultPlayerCustomData };
+				PlayerInfo newPlayerInfo = new PlayerInfo { Alias = newPlayerAlias, Nickname = GetRandomNickname_AdjectiveNoun(), CustomData = gameRegistry.DefaultPlayerCustomData };
 				playerRegistry = new PlayerRegistry
 				{
 					PlayerId = playerId,
@@ -71,18 +71,21 @@ namespace Kalkatos.FunctionsGame
 			};
 		}
 
-		public static async Task<Response> SetPlayerData (SetPlayerDataRequest request)
+		public static async Task<PlayerInfoResponse> SetPlayerData (SetPlayerDataRequest request)
 		{
 			if (request.Data == null || request.Data.Count() == 0)
-				return new NetworkError { Tag = NetworkErrorTag.WrongParameters, Message = "Request Data is null or empty." };
+				return new PlayerInfoResponse { IsError = true, Message = "Request Data is null or empty." };
 			if (string.IsNullOrEmpty(request.PlayerId))
-				return new NetworkError { Tag = NetworkErrorTag.WrongParameters, Message = "Player ID is null or empty." };
+				return new PlayerInfoResponse { IsError = true, Message = "Player ID is null or empty." };
 			PlayerRegistry playerRegistry = await service.GetPlayerRegistry(request.PlayerId);
 			if (playerRegistry == null)
-				return new NetworkError { Tag = NetworkErrorTag.WrongParameters, Message = "Player not found." };
-			if (request.Data.ContainsKey("Nickname"))
+				return new PlayerInfoResponse { IsError = true, Message = "Player not found." };
+			bool hasChangedNickname = request.Data.ContainsKey("Nickname");
+			string newNickname;
+			if (hasChangedNickname)
 			{
-				playerRegistry.Info.Nickname = request.Data["Nickname"];
+				newNickname = GetRandomNickname_AdjectiveNoun();
+				playerRegistry.Info.Nickname = newNickname; //request.Data["Nickname"];
 				request.Data.Remove("Nickname");
 			}
 			if (playerRegistry.Info.CustomData == null)
@@ -91,7 +94,7 @@ namespace Kalkatos.FunctionsGame
 				if (playerRegistry.Info.CustomData.ContainsKey(item.Key))
 					playerRegistry.Info.CustomData[item.Key] = item.Value;
 			await service.SetPlayerRegistry(playerRegistry);
-			return new Response { Message = "Ok" };
+			return new PlayerInfoResponse { PlayerInfo = playerRegistry.Info.Clone(), Message = "Data changed successfully!" };
 		}
 
 		public static async Task<GameDataResponse> GetGameSettings (GameDataRequest request)

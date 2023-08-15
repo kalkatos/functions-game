@@ -39,7 +39,7 @@ namespace Kalkatos.FunctionsGame.Azure
 			Logger.Setup(log);
 			log.LogWarning($"   [{nameof(SetPlayerData)}] Request = {requestSerialized}");
 			SetPlayerDataRequest request = JsonConvert.DeserializeObject<SetPlayerDataRequest>(requestSerialized);
-			Response response = await MatchFunctions.SetPlayerData(request);
+			PlayerInfoResponse response = await MatchFunctions.SetPlayerData(request);
 			string responseSerialized = JsonConvert.SerializeObject(response);
 			log.LogWarning($"   [{nameof(SetPlayerData)}] === {responseSerialized}");
 			return responseSerialized;
