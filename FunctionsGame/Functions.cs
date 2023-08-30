@@ -358,7 +358,7 @@ namespace Kalkatos.FunctionsGame
 			return new StateResponse { IsError = true, Message = "Match is in an unknown state." };
 		}
 
-		// █████████████████████████████████████ P U B L I C   U T I L I T Y █████████████████████████████████████
+		// █████████████████████████████████████ P U B L I C █ U T I L I T Y █████████████████████████████████████
 
 		public static string GetRandomNickname_GuestPlus6Letters ()
 		{
@@ -522,7 +522,9 @@ namespace Kalkatos.FunctionsGame
 			int count = 0;
 			string playersWithHandshaking = "";
 			foreach (var player in players)
-				if (player[0] == 'X' || !string.IsNullOrEmpty(state.GetPrivate(player, "Handshaking")) || actions.Find(x => x.PlayerId == player && x.Action.IsPrivateChangeEqualsIfPresent("Handshaking", "1")) != null)
+				if (player[0] == 'X' 
+					|| !string.IsNullOrEmpty(state.GetPrivate(player, "Handshaking")) 
+					|| (actions.Find(x => x.PlayerId == player && x.Action.IsPrivateChangeEqualsIfPresent("Handshaking", "1")) != null))
 				{
 					count++;
 					playersWithHandshaking += $"| {player}";
