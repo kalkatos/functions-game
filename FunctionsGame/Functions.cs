@@ -121,7 +121,7 @@ namespace Kalkatos.FunctionsGame
 				return new ActionResponse { IsError = true, Message = "Problem retrieving the match." };
 			if (!match.HasPlayer(request.PlayerId))
 				return new ActionResponse { IsError = true, Message = "Player is not on that match." };
-			if (match.Status == (int)MatchStatus.Ended)
+			if (match.IsEnded)
 				return new ActionResponse { IsError = true, Message = "Match is over." };
 			StateRegistry state = await service.GetState(request.MatchId);
 			if (!gameList[match.GameId].IsActionAllowed(request.PlayerId, request.Action, match, state))
@@ -239,7 +239,7 @@ namespace Kalkatos.FunctionsGame
 			MatchRegistry match = await service.GetMatchRegistry(request.MatchId);
 			if (match == null)
 				return new MatchResponse { IsError = true, Message = $"Match with id {request.MatchId} wasn't found." };
-			if (match.Status == (int)MatchStatus.Ended)
+			if (match.IsEnded)
 			{
 				await DeleteMatch(match.MatchId);
 				return new MatchResponse { IsError = true, Message = $"Match is over.", IsOver = true };
@@ -250,7 +250,8 @@ namespace Kalkatos.FunctionsGame
 			return new MatchResponse
 			{
 				MatchId = request.MatchId,
-				Players = playerInfos
+				Players = playerInfos,
+				IsOver = match.IsEnded
 			};
 		}
 
@@ -306,7 +307,7 @@ namespace Kalkatos.FunctionsGame
 			StateRegistry state = await service.GetState(matchId);
 			if (state == null)
 				return;
-			if (!HasHandshakingFromAllPlayers(state, await service.GetActions(matchId)) || state.Hash == lastHash)
+			if ((state.TurnNumber == 0 && !HasHandshakingFromAllPlayers(state, await service.GetActions(matchId))) || state.Hash == lastHash)
 				await DeleteMatch(matchId);
 			else
 			{
@@ -324,6 +325,9 @@ namespace Kalkatos.FunctionsGame
 		{
 			if (string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.MatchId))
 				return new StateResponse { IsError = true, Message = "Match id and player id may not be null." };
+
+			string debug = request.PlayerId.Remove(9);
+
 			MatchRegistry match = await service.GetMatchRegistry(request.MatchId);
 			if (match == null)
 				return new StateResponse { IsError = true, Message = "Match not found." };
@@ -331,15 +335,36 @@ namespace Kalkatos.FunctionsGame
 				return new StateResponse { IsError = true, Message = "Player is not on that match." };
 			StateRegistry currentState = await service.GetState(request.MatchId);
 			List<ActionRegistry> actions = await service.GetActions(request.MatchId);
-			switch (match.Status)
+
+			if (currentState == null)
+			{
+				Logger.LogError($"   [GetMatchState-{debug}] Last state is null!");
+                return new StateResponse { IsError = true, Message = "Get state error." };
+            }
+			if (!HasHandshakingFromAllPlayers(currentState, actions))
+                return new StateResponse { IsError = true, Message = "Not every player is ready." };
+            currentState = await PrepareTurn(request.PlayerId, match, currentState, actions);
+            StateInfo info = currentState.GetStateInfo(request.PlayerId);
+            if (info.Hash == request.LastHash)
+                return new StateResponse { IsError = true, Message = "Current state is the same known state." };
+
+            Logger.LogWarning($"   [GetMatchState-{debug}] StateRegistry = = " + JsonConvert.SerializeObject(currentState, Formatting.Indented));
+
+            return new StateResponse { StateInfo = info };
+
+
+			/*
+            switch (match.Status)
 			{
 				case (int)MatchStatus.AwaitingPlayers:
-					if (!HasHandshakingFromAllPlayers(currentState, actions))
-						return new StateResponse { IsError = true, Message = "Not every player is ready." };
-					match.Status = (int)MatchStatus.Started;
-					match.StartTime = DateTime.UtcNow;
-					await service.SetMatchRegistry(match);
+					//if (!HasHandshakingFromAllPlayers(currentState, actions))
+					//	return new StateResponse { IsError = true, Message = "Not every player is ready." };
 					currentState = await PrepareTurn(request.PlayerId, match, currentState, actions);
+					if (match.Status == (int)MatchStatus.Started)
+					{
+						match.StartTime = DateTime.UtcNow;
+						await service.SetMatchRegistry(match);
+					}
 
 					Logger.LogWarning("   [GetMatchState] StateRegistry = = " + JsonConvert.SerializeObject(currentState, Formatting.Indented));
 
@@ -356,6 +381,7 @@ namespace Kalkatos.FunctionsGame
 					return new StateResponse { StateInfo = info };
 			}
 			return new StateResponse { IsError = true, Message = "Match is in an unknown state." };
+			*/
 		}
 
 		// █████████████████████████████████████ P U B L I C █ U T I L I T Y █████████████████████████████████████
@@ -492,9 +518,9 @@ namespace Kalkatos.FunctionsGame
 				actions = await service.GetActions(match.MatchId);
 			StateRegistry newState = gameList[match.GameId].PrepareTurn(requesterId, match, lastState, actions);
 			await service.UpdateActions(match.MatchId, actions);
-			if (newState.IsMatchEnded && match.Status != (int)MatchStatus.Ended)
+			if (newState.IsMatchEnded && !match.IsEnded)
 			{
-				match.Status = (int)MatchStatus.Ended;
+				match.IsEnded = true;
 				await service.SetMatchRegistry(match);
 				await service.DeleteMatchmakingHistory(null, match.MatchId);
 				if (!await service.SetState(match.MatchId, lastState, newState))
