@@ -146,6 +146,9 @@ namespace Kalkatos.FunctionsGame
 					Action = request.Action, 
 					Hash = requestActionHash
 				});
+
+			Logger.LogWarning($"   [{nameof(SendAction)}] \r\n>> Request = {JsonConvert.SerializeObject(request, Formatting.Indented)}");
+
 			return new ActionResponse { Message = "Action registered successfully." };
 
 
@@ -224,7 +227,7 @@ namespace Kalkatos.FunctionsGame
 					if (entries == null || entries.Length == 0)
 						return new MatchResponse { IsError = true, Message = $"Didn't find any match for player." };
 					if (entries.Length > 1)
-						Logger.LogWarning($"[{nameof(GetMatch)}] More than one entry in matchmaking found! Player = {request.PlayerId} Query = {JsonConvert.SerializeObject(entries)}");
+						Logger.LogError($"[{nameof(GetMatch)}] More than one entry in matchmaking found! Player = {request.PlayerId} Query = {JsonConvert.SerializeObject(entries)}");
 					var playerEntry = entries[0];
 					if (playerEntry.Status == MatchmakingStatus.FailedWithNoPlayers)
 						return new MatchResponse { IsError = true, Message = $"Matchmaking failed with no players." };
@@ -287,7 +290,7 @@ namespace Kalkatos.FunctionsGame
 			await service.SetState(request.MatchId, currentState, newState);
 			newState = await PrepareTurn (request.PlayerId, await service.GetMatchRegistry(request.MatchId), newState);
 
-			Logger.LogWarning("   [LeaveMatch] StateRegistry = = " + JsonConvert.SerializeObject(newState, Formatting.Indented));
+			Logger.LogWarning($"   [{nameof(LeaveMatch)}] \r\n>> Request :: {JsonConvert.SerializeObject(request, Formatting.Indented)}\r\n>> StateRegistry :: {JsonConvert.SerializeObject(newState, Formatting.Indented)}");
 
 			return new Response { Message = $"Added player as retreated in {request.MatchId} successfully." };
 		}
@@ -337,24 +340,21 @@ namespace Kalkatos.FunctionsGame
 			List<ActionRegistry> actions = await service.GetActions(request.MatchId);
 
 			if (currentState == null)
-			{
-				Logger.LogError($"   [GetMatchState-{debug}] Last state is null!");
-                return new StateResponse { IsError = true, Message = "Get state error." };
-            }
+				return new StateResponse { IsError = true, Message = "Get state error." };
 			if (!HasHandshakingFromAllPlayers(currentState, actions))
-                return new StateResponse { IsError = true, Message = "Not every player is ready." };
-            currentState = await PrepareTurn(request.PlayerId, match, currentState, actions);
-            StateInfo info = currentState.GetStateInfo(request.PlayerId);
-            if (info.Hash == request.LastHash)
-                return new StateResponse { IsError = true, Message = "Current state is the same known state." };
+				return new StateResponse { IsError = true, Message = "Not every player is ready." };
+			currentState = await PrepareTurn(request.PlayerId, match, currentState, actions);
+			StateInfo info = currentState.GetStateInfo(request.PlayerId);
+			if (info.Hash == request.LastHash)
+				return new StateResponse { IsError = true, Message = "Current state is the same known state." };
 
-            Logger.LogWarning($"   [GetMatchState-{debug}] StateRegistry = = " + JsonConvert.SerializeObject(currentState, Formatting.Indented));
+			Logger.LogWarning($"   [{nameof(GetMatchState)}({debug})] \r\n>> Request :: {JsonConvert.SerializeObject(request, Formatting.Indented)} \r\n>> StateRegistry :: {JsonConvert.SerializeObject(currentState, Formatting.Indented)}");
 
-            return new StateResponse { StateInfo = info };
+			return new StateResponse { StateInfo = info };
 
 
 			/*
-            switch (match.Status)
+			switch (match.Status)
 			{
 				case (int)MatchStatus.AwaitingPlayers:
 					//if (!HasHandshakingFromAllPlayers(currentState, actions))

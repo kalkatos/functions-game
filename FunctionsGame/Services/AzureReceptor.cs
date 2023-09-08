@@ -23,11 +23,10 @@ namespace Kalkatos.FunctionsGame.Azure
 			ILogger log)
 		{
 			Logger.Setup(log);
-			log.LogWarning($"   [{nameof(LogIn)}] Request = {requestSerialized}");
 			LoginRequest request = JsonConvert.DeserializeObject<LoginRequest>(requestSerialized);
 			LoginResponse response = await MatchFunctions.LogIn(request);
 			string responseSerialized = JsonConvert.SerializeObject(response);
-			log.LogWarning($"   [{nameof(LogIn)}] === {responseSerialized}");
+			log.LogWarning($"   [{nameof(LogIn)}] \r\n>> Request :: {requestSerialized} \r\n>> Response :: {responseSerialized}");
 			return responseSerialized;
 		}
 
@@ -37,11 +36,10 @@ namespace Kalkatos.FunctionsGame.Azure
 			ILogger log)
 		{
 			Logger.Setup(log);
-			log.LogWarning($"   [{nameof(SetPlayerData)}] Request = {requestSerialized}");
 			SetPlayerDataRequest request = JsonConvert.DeserializeObject<SetPlayerDataRequest>(requestSerialized);
 			PlayerInfoResponse response = await MatchFunctions.SetPlayerData(request);
 			string responseSerialized = JsonConvert.SerializeObject(response);
-			log.LogWarning($"   [{nameof(SetPlayerData)}] === {responseSerialized}");
+			log.LogWarning($"   [{nameof(SetPlayerData)}] \r\n>> Request :: {requestSerialized} \r\n>> Response :: {responseSerialized}");
 			return responseSerialized;
 		}
 
@@ -51,11 +49,10 @@ namespace Kalkatos.FunctionsGame.Azure
 			ILogger log)
 		{
 			Logger.Setup(log);
-			log.LogWarning($"   [{nameof(GetGameSettings)}] Request = {requestSerialized}");
 			GameDataRequest request = JsonConvert.DeserializeObject<GameDataRequest>(requestSerialized);
 			GameDataResponse response = await MatchFunctions.GetGameSettings(request);
 			string responseSerialized = JsonConvert.SerializeObject(response);
-			log.LogWarning($"   [{nameof(GetGameSettings)}] === {responseSerialized}");
+			log.LogWarning($"   [{nameof(GetGameSettings)}] \r\n>> Request :: {requestSerialized} \r\n>> Response :: {responseSerialized}");
 			return responseSerialized;
 		}
 
@@ -67,11 +64,10 @@ namespace Kalkatos.FunctionsGame.Azure
 			ILogger log)
 		{
 			Logger.Setup(log);
-			log.LogWarning($"   [{nameof(FindMatch)}] Request = {requestSerialized}");
 			FindMatchRequest request = JsonConvert.DeserializeObject<FindMatchRequest>(requestSerialized);
 			Response response = await MatchFunctions.FindMatch(request);
 			string responseSerialized = JsonConvert.SerializeObject(response);
-			log.LogWarning($"   [{nameof(FindMatch)}] === {responseSerialized}");
+			log.LogWarning($"   [{nameof(FindMatch)}] \r\n>> Request :: {requestSerialized} \r\n>> Response :: {responseSerialized}");
 			return responseSerialized;
 		}
 
@@ -81,11 +77,10 @@ namespace Kalkatos.FunctionsGame.Azure
 			ILogger log)
 		{
 			Logger.Setup(log);
-			log.LogWarning($"   [{nameof(GetMatch)}] Request = {requestSerialized}");
 			MatchRequest request = JsonConvert.DeserializeObject<MatchRequest>(requestSerialized);
 			MatchResponse response = await MatchFunctions.GetMatch(request);
 			string responseSerialized = JsonConvert.SerializeObject(response);
-			log.LogWarning($"   [{nameof(GetMatch)}] === {responseSerialized}");
+			log.LogWarning($"   [{nameof(GetMatch)}] \r\n>> Request :: {requestSerialized} \r\n>> Response :: {responseSerialized}");
 			return responseSerialized;
 		}
 
@@ -95,11 +90,10 @@ namespace Kalkatos.FunctionsGame.Azure
 			ILogger log)
 		{
 			Logger.Setup(log);
-			log.LogWarning($"   [{nameof(LeaveMatch)}] Request = {requestSerialized}");
 			MatchRequest request = JsonConvert.DeserializeObject<MatchRequest>(requestSerialized);
 			Response response = await MatchFunctions.LeaveMatch(request);
 			string responseSerialized = JsonConvert.SerializeObject(response);
-			log.LogWarning($"   [{nameof(LeaveMatch)}] === {responseSerialized}");
+			log.LogWarning($"   [{nameof(LeaveMatch)}] \r\n>> Request :: {requestSerialized} \r\n>> Response :: {responseSerialized}");
 			return responseSerialized;
 		}
 
@@ -112,11 +106,11 @@ namespace Kalkatos.FunctionsGame.Azure
 			)
 		{
 			Logger.Setup(log);
-			log.LogWarning($"   [{nameof(SendAction)}] Request = {requestSerialized}");
 			ActionRequest request = JsonConvert.DeserializeObject<ActionRequest>(requestSerialized);
 			ActionResponse response = await MatchFunctions.SendAction(request);
 			string responseSerialized = JsonConvert.SerializeObject(response);
-			log.LogWarning($"   [{nameof(SendAction)}] === {responseSerialized}");
+			if (response.IsError)
+				log.LogError($"   [{nameof(SendAction)} :: Error] \r\n>> Request :: {requestSerialized} \r\n>> Response :: {responseSerialized}");
 			return responseSerialized;
 		}
 
@@ -133,11 +127,11 @@ namespace Kalkatos.FunctionsGame.Azure
 			)
 		{
 			Logger.Setup(log);
-			log.LogWarning($"   [{nameof(GetMatchState)}] Request = {requestSerialized}");
 			StateRequest request = JsonConvert.DeserializeObject<StateRequest>(requestSerialized);
 			StateResponse response = await MatchFunctions.GetMatchState(request);
 			string responseSerialized = JsonConvert.SerializeObject(response);
-			log.LogWarning($"   [{nameof(GetMatchState)}] === {responseSerialized}");
+			if (response.IsError)
+				log.LogError($"   [{nameof(GetMatchState)} :: Error] \r\n>> Request :: {requestSerialized} \r\n>> Response :: {responseSerialized}");
 			return responseSerialized;
 		}
 

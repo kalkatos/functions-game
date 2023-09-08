@@ -46,7 +46,7 @@ namespace Kalkatos.FunctionsGame.Registry
 			{
 				PublicProperties = publicPropertiesClone,
 				PrivateProperties = privatePropertiesClone,
-				Hash = GetHash(publicPropertiesClone, privatePropertiesClone)
+				Hash = hash // GetHash(publicPropertiesClone, privatePropertiesClone)
 			};
 			return stateInfo;
 		}

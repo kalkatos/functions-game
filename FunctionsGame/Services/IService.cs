@@ -20,8 +20,8 @@ namespace Kalkatos.FunctionsGame
 		Task DeleteMatchmakingHistory (string playerId, string matchId);
 		// Action
 		Task AddAction (string matchId, string playerId, ActionRegistry action);
-        Task<List<ActionRegistry>> GetActions (string matchId);
-        Task UpdateActions (string matchId, List<ActionRegistry> actionList);
+		Task<List<ActionRegistry>> GetActions (string matchId);
+		Task UpdateActions (string matchId, List<ActionRegistry> actionList);
 		// Match
 		Task<MatchRegistry> GetMatchRegistry (string matchId);
 		Task SetMatchRegistry (MatchRegistry matchRegistry);
