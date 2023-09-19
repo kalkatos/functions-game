@@ -286,7 +286,7 @@ namespace Kalkatos.FunctionsGame
 			if (newState.HasPublicProperty("RetreatedPlayers"))
 				newState.UpsertPublicProperty("RetreatedPlayers", $"{newState.GetPublic("RetreatedPlayers")}|{request.PlayerId}");
 			newState.UpsertPublicProperty("RetreatedPlayers", request.PlayerId);
-			await service.SetState(request.MatchId, currentState, newState);
+			await service.SetState(request.MatchId, currentState.Hash, newState);
 			newState = await PrepareTurn (request.PlayerId, await service.GetMatchRegistry(request.MatchId), newState);
 
 			Logger.LogWarning($"   [{nameof(LeaveMatch)}] \r\n>> Request :: {JsonConvert.SerializeObject(request, Formatting.Indented)}\r\n>> StateRegistry :: {JsonConvert.SerializeObject(newState, Formatting.Indented)}");
@@ -520,7 +520,7 @@ namespace Kalkatos.FunctionsGame
 				match.IsEnded = true;
 				await service.SetMatchRegistry(match);
 				await service.DeleteMatchmakingHistory(null, match.MatchId);
-				if (!await service.SetState(match.MatchId, lastState, newState))
+				if (!await service.SetState(match.MatchId, lastState.Hash, newState))
 				{
 					Logger.LogError("   [PrepareTurn] States didn't match, retrying....");
 					return await PrepareTurn(requesterId, match, await service.GetState(match.MatchId), actions);
@@ -531,7 +531,7 @@ namespace Kalkatos.FunctionsGame
 			}
 			if (lastState != null && newState.Hash == lastState.Hash)
 				return lastState;
-			if (!await service.SetState(match.MatchId, lastState, newState))
+			if (!await service.SetState(match.MatchId, lastState.Hash, newState))
 			{
 				Logger.LogError("   [PrepareTurn] States didn't match, retrying....");
 				return await PrepareTurn(requesterId, match, await service.GetState(match.MatchId), actions);

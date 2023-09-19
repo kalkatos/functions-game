@@ -29,7 +29,7 @@ namespace Kalkatos.FunctionsGame
 		Task DeleteMatchRegistry (string matchId);
 		// States
 		Task<StateRegistry> GetState (string matchId);
-		Task<bool> SetState (string matchId, StateRegistry oldState, StateRegistry newState);
+		Task<bool> SetState (string matchId, int? oldStateHash, StateRegistry newState);
 		Task DeleteState (string matchId);
 		// General
 		Task ScheduleCheckMatch (int millisecondsDelay, string matchId, int lastHash);

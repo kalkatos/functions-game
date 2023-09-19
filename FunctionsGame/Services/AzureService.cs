@@ -189,7 +189,7 @@ namespace Kalkatos.FunctionsGame.Azure
 			return state;
 		}
 
-		public async Task<bool> SetState (string matchId, StateRegistry oldState, StateRegistry newState)
+		public async Task<bool> SetState (string matchId, int? oldStateHash, StateRegistry newState)
 		{
 			//QueueClient queue = new QueueClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "set-state");
 			//string message = $"{matchId}|{JsonConvert.SerializeObject(state)}";
@@ -203,9 +203,9 @@ namespace Kalkatos.FunctionsGame.Azure
 				try
 				{
 					StateRegistry stateRegistry = await GetState(matchId);
-					if (stateRegistry != null && oldState != null && oldState.Hash != stateRegistry.Hash)
+					if (stateRegistry != null && oldStateHash.HasValue && oldStateHash.Value != stateRegistry.Hash)
 					{
-						Logger.LogError($"   [SetState] states don't match ===\n old - {JsonConvert.SerializeObject(oldState, Formatting.Indented)}\n saved - {JsonConvert.SerializeObject(stateRegistry, Formatting.Indented)}");
+						Logger.LogError($"   [SetState] states don't match ===\n saved - {JsonConvert.SerializeObject(stateRegistry, Formatting.Indented)}");
 						return false;
 					}
 					using (Stream stream = await stateBlob.OpenWriteAsync(true))
