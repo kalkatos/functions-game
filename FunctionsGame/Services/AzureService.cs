@@ -238,10 +238,11 @@ namespace Kalkatos.FunctionsGame.Azure
 			TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Actions");
 			await tableClient.AddEntityAsync(
 				new ActionEntity 
-				{ 
+				{
 					PartitionKey = matchId, 
-					RowKey = Guid.NewGuid().ToString(), 
+					RowKey = action.Id,
 					PlayerId = playerId, 
+					IsProcessed = false,
 					SerializedAction = JsonConvert.SerializeObject(action) 
 				});
 		}
@@ -250,23 +251,39 @@ namespace Kalkatos.FunctionsGame.Azure
 		{
 			TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Actions");
 			var query = tableClient.QueryAsync<ActionEntity>(t => t.PartitionKey == matchId);
-			await foreach (var item in query)
-				tableClient.DeleteEntity(item.PartitionKey, item.RowKey);
-			foreach (var item in actionList)
-				await AddAction(item.PlayerId, matchId, item);
+			foreach (ActionRegistry action in actionList)
+			{
+				ActionEntity entity = new ActionEntity
+				{
+					PartitionKey = matchId, 
+					RowKey = action.Id, 
+					PlayerId = action.PlayerId, 
+					SerializedAction = JsonConvert.SerializeObject(action),
+					IsProcessed = action.IsProcessed,
+				};
+				await tableClient.UpsertEntityAsync(entity);
+            }
 		}
 
 		public async Task<List<ActionRegistry>> GetActions (string matchId)
 		{
 			List<ActionRegistry> resultList = new List<ActionRegistry>();
 			TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Actions");
-			var query = tableClient.QueryAsync<ActionEntity>(t => t.PartitionKey == matchId);
+			var query = tableClient.QueryAsync<ActionEntity>(t => t.PartitionKey == matchId && !t.IsProcessed);
 			if (query == null)
 				return resultList;
 			await foreach (var item in query)
 				resultList.Add(JsonConvert.DeserializeObject<ActionRegistry>(item.SerializedAction));
 			return resultList;
 		}
+
+		public async Task DeleteActions (string matchId)
+		{
+            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Actions");
+            var query = tableClient.QueryAsync<ActionEntity>(t => t.PartitionKey == matchId);
+			await foreach (ActionEntity item in query)
+				tableClient.DeleteEntity(item.PartitionKey, item.RowKey);
+        }
 
 		// ████████████████████████████████████████████ O T H E R ████████████████████████████████████████████
 
@@ -323,6 +340,7 @@ namespace Kalkatos.FunctionsGame.Azure
 		public string PartitionKey { get; set; } // Match ID
 		public string RowKey { get; set; } // Random ID
 		public string PlayerId { get; set; }
+		public bool IsProcessed { get; set; }
 		public string SerializedAction { get; set; }
 		public DateTimeOffset? Timestamp { get; set; }
 		public ETag ETag { get; set; }

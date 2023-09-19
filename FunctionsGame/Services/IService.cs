@@ -22,6 +22,7 @@ namespace Kalkatos.FunctionsGame
 		Task AddAction (string matchId, string playerId, ActionRegistry action);
 		Task<List<ActionRegistry>> GetActions (string matchId);
 		Task UpdateActions (string matchId, List<ActionRegistry> actionList);
+		Task DeleteActions (string matchId);
 		// Match
 		Task<MatchRegistry> GetMatchRegistry (string matchId);
 		Task SetMatchRegistry (MatchRegistry matchRegistry);

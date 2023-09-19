@@ -129,7 +129,6 @@ namespace Kalkatos.FunctionsGame
 
 			// Action Duplicate Protection
 
-			int requestActionHash = Helper.GetHash(request.Action.PrivateChanges, request.Action.PublicChanges);
 			//List<ActionRegistry> registeredActions = await service.GetActions(request.MatchId, request.PlayerId);
 			//foreach (var action in registeredActions)
 			//{
@@ -141,10 +140,10 @@ namespace Kalkatos.FunctionsGame
 			await service.AddAction(request.MatchId, request.PlayerId, 
 				new ActionRegistry 
 				{ 
+					Id = Guid.NewGuid().ToString(),
 					MatchId = request.MatchId, 
 					PlayerId = request.PlayerId, 
 					Action = request.Action, 
-					Hash = requestActionHash
 				});
 
 			Logger.LogWarning($"   [{nameof(SendAction)}] \r\n>> Request = {JsonConvert.SerializeObject(request, Formatting.Indented)}");
@@ -303,6 +302,7 @@ namespace Kalkatos.FunctionsGame
 			await service.DeleteMatchmakingHistory(null, matchId);
 			await service.DeleteState(matchId);
 			await service.DeleteMatchRegistry(matchId);
+			await service.DeleteActions(matchId);
 		}
 
 		public static async Task CheckMatch (string matchId, int lastHash)
@@ -328,9 +328,6 @@ namespace Kalkatos.FunctionsGame
 		{
 			if (string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.MatchId))
 				return new StateResponse { IsError = true, Message = "Match id and player id may not be null." };
-
-			string debug = request.PlayerId.Remove(9);
-
 			MatchRegistry match = await service.GetMatchRegistry(request.MatchId);
 			if (match == null)
 				return new StateResponse { IsError = true, Message = "Match not found." };
@@ -348,7 +345,7 @@ namespace Kalkatos.FunctionsGame
 			if (info.Hash == request.LastHash)
 				return new StateResponse { IsError = true, Message = "Current state is the same known state." };
 
-			Logger.LogWarning($"   [{nameof(GetMatchState)}({debug})] \r\n>> Request :: {JsonConvert.SerializeObject(request, Formatting.Indented)} \r\n>> StateRegistry :: {JsonConvert.SerializeObject(currentState, Formatting.Indented)}");
+			Logger.LogWarning($"   [{nameof(GetMatchState)}] \r\n>> Request :: {JsonConvert.SerializeObject(request, Formatting.Indented)} \r\n>> StateRegistry :: {JsonConvert.SerializeObject(currentState, Formatting.Indented)}");
 
 			return new StateResponse { StateInfo = info };
 

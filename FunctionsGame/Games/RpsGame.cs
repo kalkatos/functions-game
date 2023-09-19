@@ -1,5 +1,6 @@
 ﻿using Kalkatos.FunctionsGame.Registry;
 using Kalkatos.Network.Model;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 
@@ -86,16 +87,15 @@ namespace Kalkatos.FunctionsGame.Rps
 				return newState;
 
 			// Treat actions
-			foreach (var item in actions)
+			foreach (ActionRegistry item in actions)
 			{
 				newState.UpsertPublicProperties(item.Action.PublicChanges);
 				newState.UpsertPrivateProperties(item.PlayerId, item.Action.PrivateChanges);
+				item.IsProcessed = true;
 			}
-			actions.Clear();
 
 			if (!isFirstTurn)
 			{
-
 				DateTime turnStartedTime = ExtractTime(turnStartedTimeKey, lastState);
 				DateTime turnEndedTime = ExtractTime(turnEndedTimeKey, lastState);
 
