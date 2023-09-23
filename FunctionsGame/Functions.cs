@@ -553,7 +553,7 @@ namespace Kalkatos.FunctionsGame
 					playersWithHandshaking += $"| {player}";
 				}
 			if (count != players.Length)
-				Logger.LogError($"   [HasHandshakingFromAllPlayers] Player with handshaking = {count} = {playersWithHandshaking}\n{JsonConvert.SerializeObject(actions, Formatting.Indented)}");
+				Logger.LogError($"   [HasHandshakingFromAllPlayers] Player with handshaking = {count} = {playersWithHandshaking}\r\n  >>>  STATE  >>>>\r\n{JsonConvert.SerializeObject(state, Formatting.Indented)}\r\n   >>>   ACTIONS   >>>\r\n{JsonConvert.SerializeObject(actions, Formatting.Indented)}");
 			return count == players.Length;
 		}
 	}
