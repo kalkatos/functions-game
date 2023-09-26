@@ -21,9 +21,22 @@ namespace Kalkatos.FunctionsGame.Azure
 		public async Task<GameRegistry> GetGameConfig (string gameId)
 		{
 			BlockBlobClient identifierFile = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "games", $"{gameId}.json");
-			if (await identifierFile.ExistsAsync())
-				using (Stream stream = await identifierFile.OpenReadAsync())
-					return JsonConvert.DeserializeObject<GameRegistry>(Helper.ReadBytes(stream, Encoding.UTF8));
+			bool retry = true;
+			while (retry)
+			{
+				try
+				{
+					if (await identifierFile.ExistsAsync())
+						using (Stream stream = await identifierFile.OpenReadAsync())
+							return JsonConvert.DeserializeObject<GameRegistry>(Helper.ReadBytes(stream, Encoding.UTF8));
+					retry = false;
+				}
+				catch (RequestFailedException ex)
+				{
+					if (ex.ErrorCode != "ConditionNotMet")
+						throw;
+				}
+			}
 			return null;
 		}
 
@@ -32,9 +45,22 @@ namespace Kalkatos.FunctionsGame.Azure
 		public async Task<string> GetPlayerId (string deviceId)
 		{
 			BlockBlobClient identifierFile = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{deviceId}");
-			if (await identifierFile.ExistsAsync())
-				using (Stream stream = await identifierFile.OpenReadAsync())
-					return Helper.ReadBytes(stream, Encoding.UTF8);
+			bool retry = true;
+			while (retry)
+			{
+				try
+				{
+					if (await identifierFile.ExistsAsync())
+						using (Stream stream = await identifierFile.OpenReadAsync())
+							return Helper.ReadBytes(stream, Encoding.UTF8);
+					retry = false;
+				}
+				catch (RequestFailedException ex)
+				{
+					if (ex.ErrorCode != "ConditionNotMet")
+						throw;
+				}
+			}
 			return null;
 		}
 
@@ -48,9 +74,22 @@ namespace Kalkatos.FunctionsGame.Azure
 		public async Task<PlayerRegistry> GetPlayerRegistry (string playerId)
 		{
 			BlockBlobClient playerBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "players", $"{playerId}.json");
-			if (await playerBlob.ExistsAsync())
-				using (Stream stream = await playerBlob.OpenReadAsync())
-					return JsonConvert.DeserializeObject<PlayerRegistry>(Helper.ReadBytes(stream, Encoding.UTF8));
+			bool retry = true;
+			while (retry)
+			{
+				try
+				{
+					if (await playerBlob.ExistsAsync())
+						using (Stream stream = await playerBlob.OpenReadAsync())
+							return JsonConvert.DeserializeObject<PlayerRegistry>(Helper.ReadBytes(stream, Encoding.UTF8));
+					retry = false;
+				}
+				catch (RequestFailedException ex)
+				{
+					if (ex.ErrorCode != "ConditionNotMet")
+						throw;
+				}
+			}
 			return null;
 		}
 
@@ -138,9 +177,22 @@ namespace Kalkatos.FunctionsGame.Azure
 		public async Task<MatchRegistry> GetMatchRegistry (string matchId)
 		{
 			BlockBlobClient matchBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "matches", $"{matchId}.json");
-			if (await matchBlob.ExistsAsync())
-				using (Stream stream = await matchBlob.OpenReadAsync(true))
-					return JsonConvert.DeserializeObject<MatchRegistry>(Helper.ReadBytes(stream, Encoding.UTF8));
+			bool retry = true;
+			while (retry)
+			{
+				try
+				{
+					if (await matchBlob.ExistsAsync())
+						using (Stream stream = await matchBlob.OpenReadAsync(true))
+							return JsonConvert.DeserializeObject<MatchRegistry>(Helper.ReadBytes(stream, Encoding.UTF8));
+					retry = false;
+				}
+				catch (RequestFailedException ex)
+				{
+					if (ex.ErrorCode != "ConditionNotMet")
+						throw;
+				}
+			}
 			return null;
 		}
 
@@ -179,14 +231,29 @@ namespace Kalkatos.FunctionsGame.Azure
 		public async Task<StateRegistry> GetState (string matchId)
 		{
 			BlockBlobClient stateBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "states", $"{matchId}.json");
-			StateRegistry state = null;
-			if (await stateBlob.ExistsAsync())
-				using (Stream stream = await stateBlob.OpenReadAsync())
-					state = JsonConvert.DeserializeObject<StateRegistry>(Helper.ReadBytes(stream, Encoding.UTF8));
-			else
-				Logger.LogError($"   [GetState] State does not exist.");
-			state?.UpdateHash();
-			return state;
+			bool retry = true;
+			while (retry)
+			{
+				try
+				{
+					if (await stateBlob.ExistsAsync())
+					{
+						using (Stream stream = await stateBlob.OpenReadAsync())
+						{
+							StateRegistry state = JsonConvert.DeserializeObject<StateRegistry>(Helper.ReadBytes(stream, Encoding.UTF8));
+							state?.UpdateHash();
+							return state;
+						}
+					}
+					retry = false;
+				}
+				catch (RequestFailedException ex)
+				{
+					if (ex.ErrorCode != "ConditionNotMet")
+						throw;
+				}
+			}
+			return null;
 		}
 
 		public async Task<bool> SetState (string matchId, int? oldStateHash, StateRegistry newState)
@@ -262,7 +329,7 @@ namespace Kalkatos.FunctionsGame.Azure
 					IsProcessed = action.IsProcessed,
 				};
 				await tableClient.UpsertEntityAsync(entity);
-            }
+			}
 		}
 
 		public async Task<List<ActionRegistry>> GetActions (string matchId)
@@ -279,11 +346,11 @@ namespace Kalkatos.FunctionsGame.Azure
 
 		public async Task DeleteActions (string matchId)
 		{
-            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Actions");
-            var query = tableClient.QueryAsync<ActionEntity>(t => t.PartitionKey == matchId);
+			TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Actions");
+			var query = tableClient.QueryAsync<ActionEntity>(t => t.PartitionKey == matchId);
 			await foreach (ActionEntity item in query)
 				tableClient.DeleteEntity(item.PartitionKey, item.RowKey);
-        }
+		}
 
 		// ████████████████████████████████████████████ O T H E R ████████████████████████████████████████████
 
@@ -291,13 +358,28 @@ namespace Kalkatos.FunctionsGame.Azure
 		{
 			BlockBlobClient dataBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "rules", "data.json");
 			Dictionary<string, string> dataDict = null;
-			if (await dataBlob.ExistsAsync())
-				using (Stream stream = await dataBlob.OpenReadAsync())
+			bool retry = true;
+			while (retry)
+			{
+				try
 				{
-					dataDict = JsonConvert.DeserializeObject<Dictionary<string, string>>(Helper.ReadBytes(stream, Encoding.UTF8));
-					if (dataDict.ContainsKey(key))
-						return dataDict[key] == "1";
+					if (await dataBlob.ExistsAsync())
+					{
+						using (Stream stream = await dataBlob.OpenReadAsync())
+						{
+							dataDict = JsonConvert.DeserializeObject<Dictionary<string, string>>(Helper.ReadBytes(stream, Encoding.UTF8));
+							if (dataDict.ContainsKey(key))
+								return dataDict[key] == "1";
+						}
+					}
+					retry = false;
 				}
+				catch (RequestFailedException ex)
+				{
+					if (ex.ErrorCode != "ConditionNotMet")
+						throw;
+				}
+			}
 			return false;
 		}
 
