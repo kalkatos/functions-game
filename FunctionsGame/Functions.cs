@@ -33,15 +33,21 @@ namespace Kalkatos.FunctionsGame
 				return new LoginResponse { IsError = true, Message = "Wrong parameters. Identifier and GameId must not be null." };
 			PlayerRegistry playerRegistry;
 			string playerId = await service.GetPlayerId(request.Identifier);
-			GameRegistry gameRegistry = await service.GetGameConfig(request.GameId);
-			gameList[request.GameId].SetSettings(gameRegistry);
+			GameRegistry gameRegistry = null;
+			if (gameList.TryGetValue(request.GameId, out IGame game))
+			{
+                gameRegistry = await service.GetGameConfig(request.GameId);
+                if (gameRegistry == null)
+					gameRegistry = new GameRegistry();
+				game.SetSettings(gameRegistry);
+			}
 
 			if (string.IsNullOrEmpty(playerId))
 			{
 				playerId = Guid.NewGuid().ToString();
 				await service.RegisterDeviceWithId(request.Identifier, playerId);
 				string newPlayerAlias = Guid.NewGuid().ToString();
-				PlayerInfo newPlayerInfo = new PlayerInfo { Alias = newPlayerAlias, Nickname = GetRandomNickname_AdjectiveNoun(), CustomData = gameRegistry.DefaultPlayerCustomData };
+				PlayerInfo newPlayerInfo = new PlayerInfo { Alias = newPlayerAlias, Nickname = GetRandomNickname_AdjectiveNoun(), CustomData = gameRegistry?.DefaultPlayerCustomData };
 				playerRegistry = new PlayerRegistry
 				{
 					PlayerId = playerId,
@@ -57,10 +63,9 @@ namespace Kalkatos.FunctionsGame
 			{
 				playerRegistry = await service.GetPlayerRegistry(playerId);
 				if (!playerRegistry.Devices.Contains(request.Identifier))
-				{
-					playerRegistry.Devices = (string[])playerRegistry.Devices.Append(request.Identifier);
-					await service.SetPlayerRegistry(playerRegistry);
-				}
+					playerRegistry.Devices = playerRegistry.Devices.Append(request.Identifier).ToArray();
+				playerRegistry.LastAccess = DateTime.UtcNow;
+				await service.SetPlayerRegistry(playerRegistry);
 			}
 
 			return new LoginResponse

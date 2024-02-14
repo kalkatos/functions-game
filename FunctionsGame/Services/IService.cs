@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace Kalkatos.FunctionsGame
 {
-	public interface IService
+    public interface IService
 	{
 		// Game
 		Task<GameRegistry> GetGameConfig (string gameId);

@@ -1,0 +1,11 @@
+﻿using System.Threading.Tasks;
+
+namespace Kalkatos.FunctionsGame
+{
+    public interface IDataService
+	{
+		Task<string> GetValue (string key);
+		Task SetValue (string key, string value);
+        Task Delete (string key);
+    }
+}
