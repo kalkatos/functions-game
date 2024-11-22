@@ -3,7 +3,7 @@ using System;
 
 namespace Kalkatos.FunctionsGame.Registry
 {
-	public class PlayerRegistry
+    public class PlayerRegistry
     {
         public string PlayerId;
         public PlayerInfo Info;

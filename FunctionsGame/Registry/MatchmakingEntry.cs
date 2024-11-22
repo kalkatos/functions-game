@@ -8,6 +8,8 @@ namespace Kalkatos.FunctionsGame.Registry
         public string PlayerId;
 		public string PlayerInfoSerialized;
 		public string MatchId;
+		public string Alias;
+		public bool UseLobby;
         public MatchmakingStatus Status;
 		public DateTime Timestamp;
 	}
@@ -21,5 +23,6 @@ namespace Kalkatos.FunctionsGame.Registry
 		Failed = 3,
 		FailedWithNoPlayers = 4,
 		Canceled = 5,
+		InLobby = 6,
 	}
 }

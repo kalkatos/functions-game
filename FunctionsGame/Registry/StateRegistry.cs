@@ -4,7 +4,7 @@ using Newtonsoft.Json;
 
 namespace Kalkatos.FunctionsGame.Registry
 {
-	public class StateRegistry
+    public class StateRegistry
 	{
 		public bool IsMatchEnded;
 		public int TurnNumber;
@@ -13,7 +13,7 @@ namespace Kalkatos.FunctionsGame.Registry
 		[JsonProperty] private Dictionary<string, Dictionary<string, string>> privateProperties;
 		private int hash;
 
-		public int Hash => hash;
+        public int Hash => hash;
 
 		public StateRegistry ()
 		{
@@ -40,8 +40,9 @@ namespace Kalkatos.FunctionsGame.Registry
 			Dictionary<string, string> privatePropertiesClone = new Dictionary<string, string>();
 			foreach (var item in publicProperties)
 				publicPropertiesClone[item.Key] = item.Value;
-			foreach (var item in privateProperties[playerId])
-				privatePropertiesClone[item.Key] = item.Value;
+			if (privateProperties.ContainsKey(playerId))
+				foreach (var item in privateProperties[playerId])
+					privatePropertiesClone[item.Key] = item.Value;
 			StateInfo stateInfo = new StateInfo
 			{
 				PublicProperties = publicPropertiesClone,

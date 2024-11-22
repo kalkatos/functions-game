@@ -12,7 +12,9 @@ namespace Kalkatos.FunctionsGame.Registry
         public Dictionary<string, string> BotSettings;
 
         public bool HasSetting (string key)
-        { 
+        {
+            if (Settings == null)
+                return false;
             return Settings.ContainsKey (key); 
         }
 

@@ -6,16 +6,16 @@ using System.Collections.Generic;
 
 namespace Kalkatos.FunctionsGame.Rps
 {
-	public class RpsGame : IGame
+    public class RpsGame : IGame
 	{
 		private readonly string[] allowedMoves = new string[] { "ROCK", "PAPER", "SCISSORS", "NOTHING" };
 		private int maxTurnDuration = 20;
 		private int endTurnDelay = 15;
 		private int playerTimeout = 20;
 		private int targetVictoryPoints = 2;
-		private Random rand = new Random();
 		private const string humanMoves = "SPPRRSSPRPSPSPRPSPRSRSSPRRSPPRSPRPPRSPRPSRPPPSRPSRPSRPPRSPRPSPRSRPSRPPRRPSPRSRPSRPPRPSPPRPRPSPRPSPRSPRPSRP";
 		private int currentMove = -1;
+		private Random rand;
 
 		// Config Keys
 		private const string turnDurationKey = "TurnDuration";
@@ -26,7 +26,7 @@ namespace Kalkatos.FunctionsGame.Rps
 		private const string phaseKey = "Phase";
 		private const string handshakingKey = "Handshaking";
 		private const string myMoveKey = "MyMove";
-		private const string retreatedPlayersKey = "RetreatedPlayers";
+		private const string retreatedPlayersKey = "Retreated";
 		private const string turnResultSyncKey = "TurnResultSync";
 		private const string turnStartedTimeKey = "TurnStartedTime";
 		private const string turnEndedTimeKey = "TurnEndedTime";
@@ -38,9 +38,23 @@ namespace Kalkatos.FunctionsGame.Rps
 
 		// ████████████████████████████████████████████ P U B L I C ████████████████████████████████████████████
 
+		public string Name => "rps";
+
+		private Random Rand
+		{
+			get
+			{
+				if (rand == null)
+					rand = new Random();
+				return rand;
+			}
+		}
+
 		public void SetSettings (GameRegistry gameRegistry)
 		{
-			var settings = gameRegistry.Settings;
+			if (gameRegistry.Settings == null)
+				return;
+            Dictionary<string, string> settings = gameRegistry.Settings;
 			if (settings.ContainsKey(turnDurationKey))
 				maxTurnDuration = int.Parse(settings[turnDurationKey]);
 			if (settings.ContainsKey(endTurnDelayKey))
@@ -159,7 +173,7 @@ namespace Kalkatos.FunctionsGame.Rps
 
 		public PlayerInfo CreateBot (Dictionary<string, string> settings)
 		{
-			Random rand = new Random();
+			Random rand = Rand;
 			int numberOfImages = 10;
 			var customData = new Dictionary<string, string> { { "Avatar", rand.Next(13).ToString() } };
 			string randomImageIndex = rand.Next(numberOfImages).ToString();
@@ -172,8 +186,8 @@ namespace Kalkatos.FunctionsGame.Rps
 			customData.Add("ScissorsImage", indexes[2]);
 			return new PlayerInfo
 			{
-				Alias = Guid.NewGuid().ToString(),
-				Nickname = MatchFunctions.GetRandomNickname_AdjectiveNoun(),
+				Alias = $"X{Guid.NewGuid()}",
+				Nickname = Helper.GetRandomNickname_AdjectiveNoun(),
 				CustomData = customData
 			};
 		}
@@ -221,6 +235,8 @@ namespace Kalkatos.FunctionsGame.Rps
 		private void CheckRpsLogic (StateRegistry state)
 		{
 			string[] playerList = state.GetPlayers();
+			if (playerList.Length < 2)
+				return;
 			string p1Move = state.GetPrivate(playerList[0], myMoveKey);
 			string p2Move = state.GetPrivate(playerList[1], myMoveKey);
 			int turnWinner = GetWinner(p1Move, p2Move);
@@ -280,9 +296,8 @@ namespace Kalkatos.FunctionsGame.Rps
 
 			string GetBotMove ()
 			{
-				//allowedMoves[rand.Next(0, allowedMoves.Length)];
 				if (currentMove < 0)
-					currentMove = rand.Next(0, humanMoves.Length);
+					currentMove = Rand.Next(0, humanMoves.Length);
 				char move = humanMoves[currentMove];
 				currentMove = (currentMove + 1) % humanMoves.Length;
 				if (move == 'R')
@@ -299,26 +314,21 @@ namespace Kalkatos.FunctionsGame.Rps
 			int p1Score = int.Parse(state.GetPrivate(playerList[0], myScoreKey));
 			int p2Score = int.Parse(state.GetPrivate(playerList[1], myScoreKey));
 			int matchWinner = (p1Score >= targetVictoryPoints) ? -1 : (p2Score >= targetVictoryPoints) ? 1 : 0;
-			if (state.HasPublicProperty(retreatedPlayersKey))
+
+			if (state.HasPrivateProperty(playerList[0], retreatedPlayersKey))
 			{
-				string[] retreatedPlayers = state.GetPublic(retreatedPlayersKey).Split('|');
-				if (Array.IndexOf(retreatedPlayers, playerList[0]) != -1)
-				{
-					if (Array.IndexOf(retreatedPlayers, playerList[1]) != -1)
-						EndMatch(state, 0, true);
-					else
-						EndMatch(state, 1, true);
-					return true;
-				}
-				if (Array.IndexOf(retreatedPlayers, playerList[1]) != -1)
-				{
-					if (Array.IndexOf(retreatedPlayers, playerList[0]) != -1)
-						EndMatch(state, 0, true);
-					else
-						EndMatch(state, -1, true);
-					return true;
-				}
+				if (state.HasPrivateProperty(playerList[1], retreatedPlayersKey))
+					EndMatch(state, 0, true);
+				else
+					EndMatch(state, 1, true);
+				return true;
 			}
+			else if (state.HasPrivateProperty(playerList[1], retreatedPlayersKey))
+			{
+				EndMatch(state, -1, true);
+				return true;
+			}
+
 			if (matchWinner != 0)
 			{
 				EndMatch(state, matchWinner);

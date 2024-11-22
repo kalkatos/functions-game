@@ -2,11 +2,12 @@
 using Azure.Data.Tables;
 using Azure.Storage.Blobs.Specialized;
 using Azure.Storage.Queues;
-using FunctionsGame.Registry;
 using Kalkatos.FunctionsGame.Registry;
+using Kalkatos.FunctionsGame.ShadowAlchemy;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -15,7 +16,7 @@ using System.Threading.Tasks;
 namespace Kalkatos.FunctionsGame.Azure
 {
 
-    public class AzureService : IService, ILeaderboardService
+    public class AzureService : ILoginService, IMatchService, ILeaderboardService, IDataService, IAnalyticsService, IAsyncService
     {
         // ████████████████████████████████████████████ G A M E ████████████████████████████████████████████
 
@@ -38,7 +39,7 @@ namespace Kalkatos.FunctionsGame.Azure
                         throw;
                 }
             }
-            return null;
+            return new GameRegistry();
         }
 
         // ████████████████████████████████████████████ L O G I N ████████████████████████████████████████████
@@ -110,7 +111,7 @@ namespace Kalkatos.FunctionsGame.Azure
 
         // ████████████████████████████████████████████ M A T C H M A K I N G ████████████████████████████████████████████
 
-        public async Task<MatchmakingEntry[]> GetMatchmakingEntries (string region, string matchId, string playerId, MatchmakingStatus status)
+        public async Task<MatchmakingEntry[]> GetMatchmakingEntries (string region, string matchId, string playerId, string alias, MatchmakingStatus status)
         {
             await Task.Delay(1);
             TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Matchmaking");
@@ -123,6 +124,9 @@ namespace Kalkatos.FunctionsGame.Azure
             if (!string.IsNullOrEmpty(matchId))
                 query = query?.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.MatchId == matchId))?.ToList()
                     ?? tableClient.Query<PlayerLookForMatchEntity>(item => item.MatchId == matchId)?.ToList();
+            if (!string.IsNullOrEmpty(alias))
+                query = query?.Intersect(tableClient.Query<PlayerLookForMatchEntity>(item => item.Alias == alias))?.ToList()
+                    ?? tableClient.Query<PlayerLookForMatchEntity>(item => item.Alias == alias)?.ToList();
             if (status != MatchmakingStatus.Undefined)
             {
                 int statusInt = (int)status;
@@ -154,6 +158,8 @@ namespace Kalkatos.FunctionsGame.Azure
                     MatchId = entry.MatchId,
                     PlayerInfoSerialized = entry.PlayerInfoSerialized,
                     Status = (int)entry.Status,
+                    Alias = entry.Alias,
+                    UseLobby = entry.UseLobby,
                 });
         }
 
@@ -259,11 +265,6 @@ namespace Kalkatos.FunctionsGame.Azure
 
         public async Task<bool> SetState (string matchId, int? oldStateHash, StateRegistry newState)
         {
-            //QueueClient queue = new QueueClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "set-state");
-            //string message = $"{matchId}|{JsonConvert.SerializeObject(state)}";
-            //var bytes = Encoding.UTF8.GetBytes(message);
-            //await queue.SendMessageAsync(Convert.ToBase64String(bytes));
-
             BlockBlobClient stateBlob = new BlockBlobClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "states", $"{matchId}.json");
             bool stateSetSuccessfully = false;
             while (!stateSetSuccessfully)
@@ -395,13 +396,20 @@ namespace Kalkatos.FunctionsGame.Azure
 
         // █████████████████████████████████████████ L E A D E R B O A R D █████████████████████████████████████████
 
-        public async Task AddLeaderboardEvent (LeaderboardEventRegistry registry)
+        public async Task AddLeaderboardEvent (LeaderboardRegistry registry)
         {
             TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Leaderboard");
             string gameId = registry.GameId;
-            Response<LeaderboardEntity> response = await tableClient.GetEntityAsync<LeaderboardEntity>(gameId, registry.PlayerId);
-            if (response.Value == null || response.Value.Value > registry.Value)
-                return;
+            try
+            {
+                Response<LeaderboardEntity> response = await tableClient.GetEntityAsync<LeaderboardEntity>(gameId, registry.PlayerId);
+                if (response.Value == null || response.Value.Value > registry.Value)
+                    return;
+            }
+            catch
+            {
+                // Ignore
+            }
             if (string.IsNullOrEmpty(gameId))
                 gameId = "Unknown";
             await tableClient.UpsertEntityAsync(
@@ -412,37 +420,278 @@ namespace Kalkatos.FunctionsGame.Azure
                     PlayerName = registry.PlayerName,
                     Key = registry.Key,
                     Value = registry.Value,
-                    DataSerialized = JsonConvert.SerializeObject(registry.Data)
+                    DataSerialized = registry.DataSerialized
                 });
         }
 
-        public async Task<Dictionary<string, string>> GetLeaderboard (string gameId, string pageId)
+        public async Task<LeaderboardRegistry[]> GetLeaderboardEvents (string gameId, string key)
         {
             TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Leaderboard");
-            Response<LeaderboardEntity> response = await tableClient.GetEntityAsync<LeaderboardEntity>(gameId, "LastUpdate");
-            if (response.Value != null)
-            {
-                if (!response.Value.Timestamp.HasValue || (DateTime.UtcNow - response.Value.Timestamp.Value.UtcDateTime).TotalSeconds > 60)
-                    await BuildLeaderboard(gameId);
-            }
-            List<LeaderboardEntity> leaderboard = new();
-            var query = tableClient.QueryAsync<LeaderboardEntity>(t => t.PartitionKey == gameId, maxPerPage: 100);
+            var query = tableClient.QueryAsync<LeaderboardEntity>(t => t.PartitionKey == gameId && t.Key == key);
+            List<LeaderboardRegistry> leaderboard = new();
             await foreach (var entity in query)
-                leaderboard.Add(entity);
-            leaderboard.OrderByDescending(e => e.Value);
-            Dictionary<string, string> result = new();
-            foreach (var entry in leaderboard)
-                result.Add(entry.PlayerName, entry.Value.ToString());
-            return result;
-
-            async Task BuildLeaderboard (string gameId)
             {
-                // Rebuild Leaderboard
+                LeaderboardRegistry info = new LeaderboardRegistry
+                {
+                    GameId = entity.PartitionKey,
+                    PlayerId = entity.RowKey,
+                    Key = entity.Key,
+                    Value = entity.Value,
+                    PlayerName = entity.PlayerName,
+                    Rank = entity.Rank,
+                    PageId = entity.PageId,
+                    NextPageId = entity.NextPageId,
+                    DataSerialized = entity.DataSerialized,
+                };
+                leaderboard.Add(info);
+            }
+            return leaderboard.ToArray();
+        }
 
-                LeaderboardEntity lastUpdateEntity = new LeaderboardEntity { PartitionKey = gameId, RowKey = "LastUpdate", Timestamp = DateTime.UtcNow };
-                await tableClient.UpsertEntityAsync(lastUpdateEntity);
+        public async Task UpdateLeaderboardEvents (LeaderboardRegistry[] registries)
+        {
+            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Leaderboard");
+            foreach (var registry in registries)
+            {
+                LeaderboardEntity entity = new LeaderboardEntity
+                {
+                    PartitionKey = registry.GameId,
+                    RowKey = registry.PlayerId,
+                    Key = registry.Key,
+                    Value = registry.Value,
+                    PlayerName = registry.PlayerName,
+                    Rank = registry.Rank,
+                    PageId = registry.PageId,
+                    NextPageId = registry.NextPageId,
+                    DataSerialized = registry.DataSerialized,
+                };
+                await tableClient.UpsertEntityAsync(entity);
             }
         }
+
+        // █████████████████████████████████████████████ D A T A █████████████████████████████████████████████
+
+        public async Task<string> GetValue (string key, string defaultValue)
+        {
+            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Data");
+            try
+            {
+                var response = await tableClient.GetEntityAsync<DataEntity>("Default", key);
+                return response.Value.Value;
+            }
+            catch
+            {
+                return defaultValue;
+            }
+        }
+
+        public async Task SetValue (string key, string value)
+        {
+            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Data");
+            DataEntity entity = new DataEntity { PartitionKey = "Default", RowKey = key, Value = value };
+            await tableClient.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+        }
+
+        public async Task Delete (string key)
+        {
+            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Data");
+            await tableClient.DeleteEntityAsync("Default", key);
+        }
+
+        // █████████████████████████████████████████ A N A L Y T I C S █████████████████████████████████████████
+
+        public async Task SendEvent (string playerId, string key, string value)
+        {
+            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Analytics");
+            AnalyticsEntity entity = new AnalyticsEntity 
+            { 
+                PartitionKey = "Default", 
+                RowKey = Guid.NewGuid().ToString(), 
+                PlayerId = playerId,
+                Key = key, 
+                Value = value
+            };
+            await tableClient.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+        }
+
+        // █████████████████████████████████████████████ A S Y N C █████████████████████████████████████████████
+
+        public async Task UpsertAsyncObject (AsyncObjectRegistry registry)
+        {
+            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Async");
+            TableEntity dynamicEntity = new TableEntity
+            {
+                PartitionKey = registry.Region,
+                RowKey = registry.Id
+            };
+            dynamicEntity.Add("Author", registry.Author);
+            dynamicEntity.Add("PlayerId", registry.PlayerId);
+            foreach (var item in registry.Data)
+                dynamicEntity.Add(item.Key, item.Value);
+            await tableClient.UpsertEntityAsync(dynamicEntity, TableUpdateMode.Replace);
+        }
+
+        public async Task<AsyncObjectRegistry[]> GetAsyncObjects (string region)
+        {
+            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Async");
+            var query = tableClient.QueryAsync<TableEntity>(t => t.PartitionKey == region);
+            List<AsyncObjectRegistry> objs = new();
+            await foreach (var entity in query)
+                objs.Add(entity.ToAsyncObjectRegistry());
+            return objs.ToArray();
+        }
+
+        public async Task<AsyncObjectRegistry> GetAsyncObject (string region, string id)
+        {
+            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "Async");
+            try
+            {
+                var response = await tableClient.GetEntityAsync<TableEntity>(region, id);
+                if (!response.HasValue)
+                    return null;
+                TableEntity entity = response.Value;
+                return entity.ToAsyncObjectRegistry();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
+
+    public class AzureService2 : IService
+    {
+        public async Task DeleteData (string table, string partition, string key)
+        {
+            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), table);
+            await tableClient.CreateIfNotExistsAsync();
+            await tableClient.DeleteEntityAsync(partition, key);
+        }
+
+        public async Task<Dictionary<string, string>> GetAllData (string table, string partition)
+        {
+            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), table);
+            await tableClient.CreateIfNotExistsAsync();
+            var query = tableClient.QueryAsync<TableEntity>(t => t.PartitionKey == partition, 100);
+            Dictionary<string, string> result = new();
+            await foreach (var entity in query)
+                result.Add(entity.RowKey, entity["Value"] as string);
+            return result;
+        }
+
+        public async Task<string> GetData (string table, string partition, string key, string defaultValue)
+        {
+            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), table);
+            await tableClient.CreateIfNotExistsAsync();
+            var response = await tableClient.GetEntityIfExistsAsync<TableEntity>(partition, key);
+            if (!response.HasValue)
+                return defaultValue;
+            TableEntity entity = response.Value;
+            return entity["Value"] as string;
+        }
+
+        public async Task UpsertData (string table, string partition, string key, string value)
+        {
+            TableClient tableClient = new TableClient(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), table);
+            await tableClient.CreateIfNotExistsAsync();
+            
+            TableEntity entity = new TableEntity
+            {
+                PartitionKey = partition,
+                RowKey = key
+            };
+            Register(key, value);
+            await tableClient.UpsertEntityAsync(entity);
+
+            void Register (string subKey, string data, bool isFirstLevel = true)
+            {
+                if (isFirstLevel)
+                    entity.Add("Value", data);
+                if (data.TryParseAsDict(out Dictionary<string, string> dataDict) && dataDict != null)
+                {
+                    if (!isFirstLevel)
+                        entity.Add(subKey, data);
+                    foreach (var item in dataDict)
+                        if (string.IsNullOrEmpty(subKey) || isFirstLevel)
+                            Register(item.Key, item.Value, false);
+                        else
+                            Register($"{subKey}.{item.Key}", item.Value, false);
+                }
+                else if (!isFirstLevel)
+                    entity.Add(subKey, data);
+            }
+        }
+    }
+
+    public static class TableEntityExtensions
+    {
+        private static JsonSerializerSettings serializationSettings = new JsonSerializerSettings { MissingMemberHandling = MissingMemberHandling.Error };
+
+        public static bool TryParseAsDict (this string data, out Dictionary<string, string> result)
+        {
+            try
+            {
+                result = JsonConvert.DeserializeObject<Dictionary<string, string>>(data, serializationSettings);
+                return true;
+            }
+            catch (Exception)
+            {
+                result = null;
+                return false;
+            }
+        }
+
+        public static AsyncObjectRegistry ToAsyncObjectRegistry (this TableEntity entity)
+        {
+            AsyncObjectRegistry registry = new AsyncObjectRegistry
+            {
+                Region = entity.PartitionKey,
+                Id = entity.RowKey,
+                Data = new()
+            };
+            foreach (var item in entity)
+            {
+                switch (item.Key)
+                {
+                    case "Author":
+                        registry.Author = (string)item.Value;
+                        break;
+                    case "PlayerId":
+                        registry.PlayerId = (string)item.Value;
+                        break;
+                    case "odata.etag":
+                    case "RowKey":
+                    case "PartitionKey":
+                        break;
+                    default:
+                        if (!(item.Value is string))
+                            break;
+                        registry.Data.Add(item.Key, (string)item.Value);
+                        break;
+                }
+            }
+            return registry;
+        }
+    }
+
+    public class AnalyticsEntity : ITableEntity
+    {
+        public string PartitionKey { get; set; } // Default
+        public string RowKey { get; set; } // Random Guid
+        public string PlayerId { get; set; }
+        public string Key { get; set; }
+        public string Value { get; set; }
+        public DateTimeOffset? Timestamp { get; set; }
+        public ETag ETag { get; set; }
+    }
+
+    public class DataEntity : ITableEntity
+    {
+        public string PartitionKey { get; set; } // Default
+        public string RowKey { get; set; } // Key
+        public string Value { get; set; }
+        public DateTimeOffset? Timestamp { get; set; }
+        public ETag ETag { get; set; }
     }
 
     public class PlayerLookForMatchEntity : ITableEntity
@@ -452,6 +701,8 @@ namespace Kalkatos.FunctionsGame.Azure
         public string PlayerInfoSerialized { get; set; }
         public string MatchId { get; set; }
         public int Status { get; set; }
+        public string Alias { get; set; }
+        public bool UseLobby { get; set; }
         public DateTimeOffset? Timestamp { get; set; }
         public ETag ETag { get; set; }
 
@@ -464,6 +715,8 @@ namespace Kalkatos.FunctionsGame.Azure
                 MatchId = MatchId,
                 Status = (MatchmakingStatus)Status,
                 PlayerInfoSerialized = PlayerInfoSerialized,
+                Alias = Alias,
+                UseLobby = UseLobby,
                 Timestamp = Timestamp.Value.DateTime
             };
         }
@@ -499,6 +752,9 @@ namespace Kalkatos.FunctionsGame.Azure
         public string Key { get; set; }
         public double Value { get; set; }
         public string DataSerialized { get; set; }
+        public int Rank { get; set; }
+        public string PageId { get; set; }
+        public string NextPageId { get; set; }
         public DateTimeOffset? Timestamp { get; set; }
         public ETag ETag { get; set; }
     }
