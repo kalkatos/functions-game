@@ -1,12 +1,11 @@
-﻿using Kalkatos.FunctionsGame.Registry;
+﻿using Kalkatos.Network.Registry;
 using System.Threading.Tasks;
 
-namespace Kalkatos.FunctionsGame
+namespace Kalkatos.Network;
+
+public interface ILeaderboardService
 {
-    public interface ILeaderboardService
-    {
-        Task AddLeaderboardEvent (LeaderboardRegistry registry);
-        Task<LeaderboardRegistry[]> GetLeaderboardEvents (string gameId, string key);
-        Task UpdateLeaderboardEvents (LeaderboardRegistry[] registries);
-    }
+	Task AddLeaderboardEvent (LeaderboardRegistry registry);
+	Task<LeaderboardRegistry[]> GetLeaderboardEvents (string gameId, string key);
+	Task UpdateLeaderboardEvents (LeaderboardRegistry[] registries);
 }

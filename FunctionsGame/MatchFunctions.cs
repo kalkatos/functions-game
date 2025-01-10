@@ -1,485 +1,561 @@
-﻿using Kalkatos.FunctionsGame.Registry;
+﻿using Kalkatos.Network.Registry;
 using Kalkatos.Network.Model;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Azure.Core;
 
-namespace Kalkatos.FunctionsGame
+namespace Kalkatos.Network;
+
+public static class MatchFunctions
 {
-    public static class MatchFunctions
-    {
-        private static ILoginService loginService = GlobalConfigurations.LoginService;
-        private static IMatchService matchService = GlobalConfigurations.MatchService;
-        private static IGame game = GlobalConfigurations.Game;
+	private static IService service = Global.Service;
+	private static IGame game = Global.Game;
 
-        private const int CHECK_MATCH_DELAY = 30;
-        private const int LOBBY_DURATION = 3600;
+	// ████████████████████████████████████████████ A C T I O N ████████████████████████████████████████████
 
-        // ████████████████████████████████████████████ A C T I O N ████████████████████████████████████████████
+	public static async Task<ActionResponse> SendAction (ActionRequest request)
+	{
+		if (string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.MatchId))
+			return new ActionResponse { IsError = true, Message = "Match id and player id may not be null." };
+		if (request.Action == null || (!request.Action.HasAnyPublicChange() && !request.Action.HasAnyPrivateChange()))
+			return new ActionResponse { IsError = true, Message = "Action is null or empty." };
+		string matchSerialized = await service.GetData(Global.MATCHES_TABLE, Global.DEFAULT_PARTITION, request.MatchId, "");
+		if (string.IsNullOrEmpty(matchSerialized))
+			return new ActionResponse { IsError = true, Message = "Problem retrieving the match." };
+		MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(matchSerialized);
+		if (!match.HasPlayer(request.PlayerId))
+			return new ActionResponse { IsError = true, Message = "Player is not on that match." };
+		if (match.IsEnded)
+			return new ActionResponse { IsError = true, Message = "Match is over." };
+		string stateSerialized = await service.GetData(Global.STATES_TABLE, Global.DEFAULT_PARTITION, request.MatchId, "");
+		StateRegistry state = JsonConvert.DeserializeObject<StateRegistry>(stateSerialized);
 
-        public static async Task<ActionResponse> SendAction (ActionRequest request)
-        {
-            if (string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.MatchId))
-                return new ActionResponse { IsError = true, Message = "Match id and player id may not be null." };
-            if (request.Action == null || (!request.Action.HasAnyPublicChange() && !request.Action.HasAnyPrivateChange()))
-                return new ActionResponse { IsError = true, Message = "Action is null or empty." };
-            MatchRegistry match = await matchService.GetMatchRegistry(request.MatchId);
-            if (match == null)
-                return new ActionResponse { IsError = true, Message = "Problem retrieving the match." };
-            if (!match.HasPlayer(request.PlayerId))
-                return new ActionResponse { IsError = true, Message = "Player is not on that match." };
-            if (match.IsEnded)
-                return new ActionResponse { IsError = true, Message = "Match is over." };
-            StateRegistry state = await matchService.GetState(request.MatchId);
+		if (request.Action.HasAnyChangeWithKey(Global.START_MATCH_KEY) && state.TurnNumber == -1)
+		{
+			await CheckGameSettings();
+			if (match.PlayerIds.Length < game.Settings.MinPlayersPerMatch)
+				return new ActionResponse { IsError = true, Message = "Match does not have enough players." };
+			await StartMatch(match, state);
+			return new ActionResponse { Message = "Match started." };
+		}
 
-            if (request.Action.HasPublicChange("StartMatch") && state.TurnNumber == -1)
-            {
-                await StartMatch(match, state);
-                return new ActionResponse { Message = "Match started." };
-            }
+		if (!game.IsActionAllowed(request.PlayerId, request.Action, match, state))
+			return new ActionResponse { IsError = true, Message = "Action is not allowed." };
+		string id = Guid.NewGuid().ToString();
+		ActionRegistry action = new ActionRegistry
+		{
+			Id = id,
+			MatchId = request.MatchId,
+			PlayerId = request.PlayerId,
+			Action = request.Action,
+		};
+		await service.UpsertData(Global.ACTIONS_TABLE, request.MatchId, id, JsonConvert.SerializeObject(action));
+		return new ActionResponse { Message = "Action registered successfully." };
+	}
 
-            if (!game.IsActionAllowed(request.PlayerId, request.Action, match, state))
-                return new ActionResponse { IsError = true, Message = "Action is not allowed." };
-            await matchService.AddAction(request.MatchId, request.PlayerId, 
-                new ActionRegistry 
-                { 
-                    Id = Guid.NewGuid().ToString(),
-                    MatchId = request.MatchId, 
-                    PlayerId = request.PlayerId, 
-                    Action = request.Action, 
-                });
-            return new ActionResponse { Message = "Action registered successfully." };
-        }
+	// ████████████████████████████████████████████ M A T C H ████████████████████████████████████████████
 
-        // ████████████████████████████████████████████ M A T C H ████████████████████████████████████████████
+	public static async Task<Response> FindMatch (FindMatchRequest request)
+	{
+		if (request == null || string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.GameId))
+			return new Response { IsError = true, Message = "Wrong Parameters." };
+		string entrySerialized = await service.GetData(Global.MATCHMAKING_TABLE, Global.DEFAULT_PARTITION, request.PlayerId, "");
+		if (!string.IsNullOrEmpty(entrySerialized))
+		{
+			MatchmakingEntry entry = JsonConvert.DeserializeObject<MatchmakingEntry>(entrySerialized);
+			if (entry.Status == MatchmakingStatus.Searching
+				&& (DateTimeOffset.UtcNow - entry.Timestamp).TotalSeconds < 60)
+				return new Response { IsError = true, Message = "Is still searching for match." };
+		}
+		string playerSerialized = await service.GetData("Players", Global.DEFAULT_PARTITION, request.PlayerId, "");
+		if (string.IsNullOrEmpty(playerSerialized))
+			return new Response { IsError = true, Message = "Player not found." };
+		PlayerRegistry playerRegistry = JsonConvert.DeserializeObject<PlayerRegistry>(playerSerialized);
+		string playerInfoSerialized = JsonConvert.SerializeObject(playerRegistry.Info);
+		MatchmakingEntry newEntry = new MatchmakingEntry
+		{
+			Region = Global.DEFAULT_PARTITION,
+			PlayerId = request.PlayerId,
+			Status = MatchmakingStatus.Searching,
+			StatusDescription = MatchmakingStatus.Searching.ToString(),
+			UseLobby = request.UseLobby,
+			PlayerInfoSerialized = playerInfoSerialized
+		};
+		entrySerialized = JsonConvert.SerializeObject(newEntry);
+		await service.UpsertData(Global.MATCHMAKING_TABLE, Global.DEFAULT_PARTITION, request.PlayerId, entrySerialized);
+		Logger.LogWarning($"[FindMatch]   >>>  MatchmakingEntry registered: {entrySerialized}");
+		await TryToMatchPlayers(request.GameId, Global.DEFAULT_PARTITION);
+		return new Response { Message = "Find match request registered successfully." };
+	}
 
-        public static async Task<Response> FindMatch (FindMatchRequest request)
-        {
-            if (request == null || string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.Region) || string.IsNullOrEmpty(request.GameId))
-                return new Response { IsError = true, Message = "Wrong Parameters." };
-            MatchmakingEntry[] entries = await matchService.GetMatchmakingEntries(request.Region, null, request.PlayerId, null, MatchmakingStatus.Undefined);
-            if (entries != null && entries.Length > 1)
-                foreach (MatchmakingEntry entry in entries)
-                    await matchService.DeleteMatchmakingHistory(entry.PlayerId, entry.MatchId);
-            string playerInfoSerialized = JsonConvert.SerializeObject((await loginService.GetPlayerRegistry(request.PlayerId)).Info);
-            MatchmakingEntry newEntry = new MatchmakingEntry
-            {
-                Region = request.Region,
-                PlayerId = request.PlayerId,
-                Status = MatchmakingStatus.Searching,
-                UseLobby = request.UseLobby,
-                PlayerInfoSerialized = playerInfoSerialized
-            };
-            await matchService.UpsertMatchmakingEntry(newEntry);
-            Logger.LogWarning($"[FindMatch]   >>>  MatchmakingEntry registered: {JsonConvert.SerializeObject(newEntry)}");
-            await TryToMatchPlayers(request.GameId, request.Region);
-            return new Response { Message = "Find match request registered successfully." };
-        }
+	public static async Task<MatchResponse> GetMatch (MatchRequest request)
+	{
+		if (request == null || string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.GameId))
+			return new MatchResponse { IsError = true, Message = "Wrong Parameters." };
 
-        public static async Task<MatchResponse> GetMatch (MatchRequest request)
-        {
-            if (request == null || string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.Region) || string.IsNullOrEmpty(request.GameId))
-                return new MatchResponse { IsError = true, Message = "Wrong Parameters." };
+		bool isGettingByAlias = !string.IsNullOrEmpty(request.Alias);
+		if (string.IsNullOrEmpty(request.MatchId))
+		{
+			// Try to get entries two times 
+			for (int attempt = 1; attempt <= 2; attempt++)
+			{
+				string entrySerialized = "";
+				if (isGettingByAlias)
+				{
+					entrySerialized = await service.GetData(Global.MATCHMAKING_TABLE, Global.DEFAULT_PARTITION, request.Alias, "");
+					if (string.IsNullOrEmpty(entrySerialized))
+						return new MatchResponse { IsError = true, Message = $"Didn't find any match with alias {request.Alias}." };
+				}
+				else
+				{
+					entrySerialized = await service.GetData(Global.MATCHMAKING_TABLE, Global.DEFAULT_PARTITION, request.PlayerId, "");
+					if (string.IsNullOrEmpty(entrySerialized))
+						return new MatchResponse { IsError = true, Message = $"Player must be registered for matchmaking first." };
+				}
+				MatchmakingEntry entry = JsonConvert.DeserializeObject<MatchmakingEntry>(entrySerialized);
+				if (entry.Status == MatchmakingStatus.FailedWithNoPlayers)
+					return new MatchResponse { IsError = true, Message = $"Matchmaking failed with no players." };
+				if (entry.Status == MatchmakingStatus.Canceled)
+					return new MatchResponse { IsError = true, Message = $"Match is cancelled." };
+				if (attempt == 1 && string.IsNullOrEmpty(entry.MatchId))
+					await TryToMatchPlayers(request.GameId, Global.DEFAULT_PARTITION);
+				request.MatchId = entry.MatchId;
+			}
+			if (string.IsNullOrEmpty(request.MatchId))
+				return new MatchResponse { IsError = true, Message = $"Didn't find any match for player." };
+		}
+		string matchSerialized = await service.GetData(Global.MATCHES_TABLE, Global.DEFAULT_PARTITION, request.MatchId, "");
+		if (string.IsNullOrEmpty(matchSerialized))
+			return new MatchResponse { IsError = true, Message = $"Match with id {request.MatchId} wasn't found." };
+		MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(matchSerialized);
+		if (isGettingByAlias && !match.PlayerIds.Contains(request.PlayerId))
+		{
+			if (match.IsStarted)
+				return new MatchResponse { IsError = true, Message = "Match is already started, cannot add players anymore." };
+			PlayerRegistry playerRegistry = JsonConvert.DeserializeObject<PlayerRegistry>(await service.GetData("Players", Global.DEFAULT_PARTITION, request.PlayerId, ""));
+			await CheckGameSettings();
+			if (match.PlayerIds.Length >= game.Settings.MaxPlayersPerMatch)
+				return new MatchResponse { IsError = true, Message = "Match is full." };
+			match.AddPlayer(playerRegistry);
+			await service.UpsertData(Global.MATCHES_TABLE, Global.DEFAULT_PARTITION, match.MatchId, JsonConvert.SerializeObject(match));
+			await CreateFirstStateAndRegister(match);
+			string playerInfoSerialized = JsonConvert.SerializeObject(playerRegistry.Info);
+			MatchmakingEntry entry = new MatchmakingEntry
+			{
+				Region = Global.DEFAULT_PARTITION,
+				PlayerId = request.PlayerId,
+				Status = MatchmakingStatus.InLobby,
+				StatusDescription = MatchmakingStatus.InLobby.ToString(),
+				UseLobby = true,
+				Alias = request.Alias,
+				MatchId = match.MatchId,
+				PlayerInfoSerialized = playerInfoSerialized,
+			};
+			await service.UpsertData(Global.MATCHMAKING_TABLE, Global.DEFAULT_PARTITION, entry.PlayerId, JsonConvert.SerializeObject(entry));
+		}
+		PlayerInfo[] playerInfos = new PlayerInfo[match.PlayerInfos.Length];
+		for (int i = 0; i < match.PlayerInfos.Length; i++)
+			playerInfos[i] = match.PlayerInfos[i].Clone();
+		return new MatchResponse
+		{
+			MatchId = request.MatchId,
+			Players = playerInfos,
+			IsEnded = match.IsEnded,
+			Alias = match.Alias,
+			IsStarted = match.IsStarted,
+		};
+	}
 
-            bool isGettingByAlias = !string.IsNullOrEmpty(request.Alias);
-            if (string.IsNullOrEmpty(request.MatchId))
-            {
-                // Try to get entries two times 
-                for (int attempt = 1; attempt <= 2; attempt++)
-                {
-                    MatchmakingEntry[] entries = null;
-                    if (isGettingByAlias)
-                    {
-                        // Requesting by alias
-                        entries = await matchService.GetMatchmakingEntries(null, null, null, request.Alias, MatchmakingStatus.Undefined);
-                        if (entries == null || entries.Length == 0)
-                            return new MatchResponse { IsError = true, Message = $"Didn't find any match with alias {request.Alias}." };
-                    }
-                    else
-                    {
-                        // Get the match id of the match assigned to the player or find matches
-                        entries = await matchService.GetMatchmakingEntries(null, null, request.PlayerId, null, MatchmakingStatus.Undefined);
-                        if (entries == null || entries.Length == 0)
-                            return new MatchResponse { IsError = true, Message = $"Didn't find any match for player." };
-                    }
-                    if (entries.Length > 1)
-                        Logger.LogError($"[{nameof(GetMatch)}] More than one entry found! Player = {request.PlayerId} Alias = {request.Alias} Query = {JsonConvert.SerializeObject(entries)}");
-                    MatchmakingEntry playerEntry = entries[0];
-                    if (playerEntry.Status == MatchmakingStatus.FailedWithNoPlayers)
-                        return new MatchResponse { IsError = true, Message = $"Matchmaking failed with no players." };
-                    if (playerEntry.Status == MatchmakingStatus.Canceled)
-                        return new MatchResponse { IsError = true, Message = $"Match is cancelled." };
-                    if (attempt == 1 && string.IsNullOrEmpty(playerEntry.MatchId))
-                        await TryToMatchPlayers(request.GameId, request.Region);
-                    else
-                        request.MatchId = playerEntry.MatchId;
-                }
-                if (string.IsNullOrEmpty(request.MatchId))
-                    return new MatchResponse { IsError = true, Message = $"Didn't find any match for player." };
-            }
-            MatchRegistry match = await matchService.GetMatchRegistry(request.MatchId);
-            if (match == null)
-                return new MatchResponse { IsError = true, Message = $"Match with id {request.MatchId} wasn't found." };
-            if (match.IsEnded)
-            {
-                await DeleteMatch(match.MatchId);
-                return new MatchResponse { IsError = true, Message = $"Match is over.", IsOver = true };
-            }
-            if (isGettingByAlias 
-                && !match.PlayerIds.Contains(request.PlayerId))
-            {
-                if (match.IsStarted)
-                    return new MatchResponse { IsError = true, Message = "Match is already started, cannot add players anymore." };
-                PlayerRegistry playerRegistry = await loginService.GetPlayerRegistry(request.PlayerId);
-                match.AddPlayer(playerRegistry);
-                await matchService.SetMatchRegistry(match);
-                await CreateFirstStateAndRegister(match);
-                string playerInfoSerialized = JsonConvert.SerializeObject(playerRegistry.Info);
-                MatchmakingEntry newEntry = new MatchmakingEntry
-                {
-                    Region = request.Region,
-                    PlayerId = request.PlayerId,
-                    Status = MatchmakingStatus.InLobby,
-                    UseLobby = true,
-                    Alias = request.Alias,
-                    MatchId = match.MatchId,
-                    PlayerInfoSerialized = playerInfoSerialized,
-                };
-                await matchService.UpsertMatchmakingEntry(newEntry);
-            }
-            PlayerInfo[] playerInfos = new PlayerInfo[match.PlayerInfos.Length];
-            for (int i = 0; i < match.PlayerInfos.Length; i++)
-                playerInfos[i] = match.PlayerInfos[i].Clone();
-            return new MatchResponse
-            {
-                MatchId = request.MatchId,
-                Players = playerInfos,
-                IsOver = match.IsEnded,
-                Alias = match.Alias,
-                IsStarted = match.IsStarted,
-            };
-        }
+	public static async Task<Response> LeaveMatch (MatchRequest request)
+	{
+		if (request == null || string.IsNullOrEmpty(request.PlayerId))
+			return new Response { IsError = true, Message = "Wrong Parameters." };
 
-        public static async Task<Response> LeaveMatch (MatchRequest request)
-        {
-            if (request == null || string.IsNullOrEmpty(request.PlayerId) || string.IsNullOrEmpty(request.Region))
-                return new Response { IsError = true, Message = "Wrong Parameters." };
+		if (string.IsNullOrEmpty(request.MatchId))
+		{
+			string entrySerialized = await service.GetData(Global.MATCHMAKING_TABLE, Global.DEFAULT_PARTITION, request.PlayerId, "");
+			if (string.IsNullOrEmpty(entrySerialized))
+				return new Response { IsError = true, Message = $"Didn't find any match for player." };
+			MatchmakingEntry playerEntry = JsonConvert.DeserializeObject<MatchmakingEntry>(entrySerialized);
+			if (string.IsNullOrEmpty(playerEntry.MatchId))
+			{
+				await service.DeleteData(Global.MATCHMAKING_TABLE, Global.DEFAULT_PARTITION, request.PlayerId);
+				return new Response { Message = $"Leave match executed by wiping matchmaking entries." };
+			}
+			request.MatchId = playerEntry.MatchId;
+		}
 
-            if (string.IsNullOrEmpty(request.MatchId))
-            {
-                MatchmakingEntry[] entries = await matchService.GetMatchmakingEntries(null, null, request.PlayerId, null, MatchmakingStatus.Undefined);
-                if (entries == null || entries.Length == 0)
-                    return new Response { IsError = true, Message = $"Didn't find any match for player." };
-                MatchmakingEntry playerEntry = default;
-                if (entries.Length > 1)
-                    Logger.LogError($"[{nameof(GetMatch)}] More than one entry in matchmaking found! Player = {request.PlayerId} Query = {JsonConvert.SerializeObject(entries)}");
-                playerEntry = entries[0];
-                if (string.IsNullOrEmpty(playerEntry.MatchId))
-                {
-                    await matchService.DeleteMatchmakingHistory(request.PlayerId, null);
-                    return new Response { Message = $"Leave match executed by wiping matchmaking entries." };
-                }
-                request.MatchId = playerEntry.MatchId;
-            }
+		string matchSerialized = await service.GetData(Global.MATCHES_TABLE, Global.DEFAULT_PARTITION, request.MatchId, "");
+		if (string.IsNullOrEmpty(matchSerialized))
+			return new Response { IsError = true, Message = "Problem getting match." };
+		MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(matchSerialized);
+		if (!match.PlayerIds.Contains(request.PlayerId))
+			return new Response { IsError = true, Message = "Player is not in that match." };
+		if (match.IsEnded)
+			return new Response { Message = "Match is already over." };
+		string stateSerialized = await service.GetData(Global.STATES_TABLE, Global.DEFAULT_PARTITION, request.MatchId, "");
+		if (string.IsNullOrEmpty(stateSerialized))
+			return new Response { IsError = true, Message = "Problem getting the match state." };
+		StateRegistry currentState = JsonConvert.DeserializeObject<StateRegistry>(stateSerialized);
+		if (currentState.IsMatchEnded)
+			return new Response { Message = "Match is already over." };
 
-            StateRegistry currentState = await matchService.GetState(request.MatchId);
-            if (currentState == null)
-                return new Response { IsError = true, Message = "Problem getting the match state." };
-            StateRegistry newState = currentState.Clone();
-            newState.UpsertPrivateProperties((request.PlayerId, "Retreated", "1"));
-            await matchService.SetState(request.MatchId, currentState.Hash, newState);
-            newState = await PrepareTurn (request.PlayerId, await matchService.GetMatchRegistry(request.MatchId), newState);
+		if (!match.IsStarted)
+		{
+			int index = Array.IndexOf(match.PlayerIds, request.PlayerId);
+			match.PlayerIds = match.PlayerIds.Where(p => p != request.PlayerId).ToArray();
+			var infoList = match.PlayerInfos.ToList();
+			infoList.RemoveAt(index);
+			match.PlayerInfos = infoList.ToArray();
+			currentState = game.CreateFirstState(match);
+			await service.UpsertData(Global.STATES_TABLE, Global.DEFAULT_PARTITION, request.MatchId, JsonConvert.SerializeObject(currentState));
+			await service.UpsertData(Global.MATCHES_TABLE, Global.DEFAULT_PARTITION, request.MatchId, JsonConvert.SerializeObject(match));
+		}
+		else
+		{
+			StateRegistry newState = currentState.Clone();
+			newState.UpsertPrivateProperties((request.PlayerId, Global.RETREATED_KEY, "1"));
+			await service.UpsertData(Global.STATES_TABLE, Global.DEFAULT_PARTITION, request.MatchId, JsonConvert.SerializeObject(newState));
+			newState = await PrepareTurn(request.PlayerId, match, newState);
+		}
+		return new Response { Message = $"Added player as retreated in {request.MatchId} successfully." };
+	}
 
-            Logger.LogWarning($"   [{nameof(LeaveMatch)}] \r\n>> Request :: {JsonConvert.SerializeObject(request, Formatting.Indented)}\r\n>> StateRegistry :: {JsonConvert.SerializeObject(newState, Formatting.Indented)}");
+	public static async Task DeleteEverythingFromMatch (string matchId)
+	{
+		Logger.LogWarning("   [DeleteMatch] " + matchId);
+		if (string.IsNullOrEmpty(matchId))
+			return;
+		var matchmakingDict = await service.GetAllData(Global.MATCHMAKING_TABLE, Global.DEFAULT_PARTITION, $"MatchId eq '{matchId}'");
+		foreach (var kv in matchmakingDict)
+		{
+			MatchmakingEntry entry = JsonConvert.DeserializeObject<MatchmakingEntry>(kv.Value);
+			await service.DeleteData(Global.MATCHMAKING_TABLE, Global.DEFAULT_PARTITION, entry.PlayerId);
+			if (!string.IsNullOrEmpty(entry.Alias))
+				await service.DeleteData(Global.MATCHMAKING_TABLE, Global.DEFAULT_PARTITION, entry.Alias);
+		}
+		await service.DeleteData(Global.MATCHES_TABLE, Global.DEFAULT_PARTITION, matchId);
+		await service.DeleteData(Global.STATES_TABLE, Global.DEFAULT_PARTITION, matchId);
+		var actionsDict = await service.GetAllData(Global.ACTIONS_TABLE, matchId, null);
+		foreach (var kv in actionsDict)
+		{
+			ActionRegistry registry = JsonConvert.DeserializeObject<ActionRegistry>(kv.Value);
+			await service.DeleteData(Global.ACTIONS_TABLE, matchId, registry.Id);
+		}
+	}
 
-            return new Response { Message = $"Added player as retreated in {request.MatchId} successfully." };
-        }
+	public static async Task<int?> CheckMatch (string matchId, int lastHash)
+	{
+		string stateSerialized = await service.GetData(Global.STATES_TABLE, Global.DEFAULT_PARTITION, matchId, "");
+		if (string.IsNullOrEmpty(stateSerialized))
+		{
+			Logger.LogWarning($"   [CheckMatch] Deleting match {matchId}. Reason: no state.");
+			await DeleteEverythingFromMatch(matchId);
+			return null;
+		}
+		StateRegistry state = JsonConvert.DeserializeObject<StateRegistry>(stateSerialized);
+		if (state.TurnNumber >= 0)
+		{
+			if (state.Hash == lastHash)
+			{
+				Logger.LogWarning($"   [CheckMatch] Deleting match {matchId}. Reason: no modifications (hash={lastHash})");
+				await DeleteEverythingFromMatch(matchId);
+				return null;
+			}
+		}
+		else // In Lobby
+		{
+			string matchSerialized = await service.GetData(Global.MATCHES_TABLE, Global.DEFAULT_PARTITION, matchId, "");
+			if (string.IsNullOrEmpty(matchSerialized))
+			{
+				Logger.LogWarning($"   [CheckMatch] Deleting match {matchId}. Reason: no match registry.");
+				await DeleteEverythingFromMatch(matchId);
+				return null;
+			}
+			MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(matchSerialized);
+			await CheckGameSettings();
+			if (state.TurnNumber == -1 && (DateTimeOffset.UtcNow - match.CreatedTime).TotalSeconds >= game.Settings.LobbyDuration)
+			{
+				Logger.LogWarning($"   [CheckMatch] Deleting match {matchId}. Reason: lobby {match.Alias} expired.");
+				await DeleteEverythingFromMatch(matchId);
+				return null;
+			}
+		}
+		Logger.LogWarning($"   [CheckMatch] Match {matchId} not deleted. A new check should be scheduled.");
+		return state.Hash;
+	}
 
-        public static async Task DeleteMatch (string matchId)
-        {
-            Logger.LogWarning("   [DeleteMatch] " + matchId);
-            if (string.IsNullOrEmpty(matchId))
-                return;
-            await matchService.DeleteMatchmakingHistory(null, matchId);
-            await matchService.DeleteState(matchId);
-            await matchService.DeleteMatchRegistry(matchId);
-            await matchService.DeleteActions(matchId);
-        }
+	// ████████████████████████████████████████████ S T A T E ████████████████████████████████████████████
 
-        public static async Task CheckMatch (string matchId, int lastHash)
-        {
-            StateRegistry state = await matchService.GetState(matchId);
-            if (state == null)
-                return;
-            if ((state.TurnNumber == 0
-                    && !HasHandshakingFromAllPlayers(state, await matchService.GetActions(matchId))) 
-                || (state.TurnNumber >= 0 && state.Hash == lastHash))
-                await DeleteMatch(matchId);
-            else
-            {
-                MatchRegistry match = await matchService.GetMatchRegistry(matchId);
-                if (match == null)
-                    return;
-                if (state.TurnNumber == -1 && (DateTime.UtcNow - match.CreatedTime).TotalMinutes >= (LOBBY_DURATION - 60))
-                {
-                    await DeleteMatch(matchId);
-                    return;
-                }
-                GameRegistry gameRegistry = await loginService.GetGameConfig(match.GameId);
-                await matchService.ScheduleCheckMatch(gameRegistry.RecurrentCheckMatchDelay * 1000, matchId, state.Hash);
-            }
-        }
+	public static async Task<StateResponse> GetMatchState (StateRequest request)
+	{
+		try
+		{
+			if (string.IsNullOrEmpty(request.PlayerId))
+				return new StateResponse { IsError = true, Message = "Player id may not be null." };
+			if (string.IsNullOrEmpty(request.MatchId))
+				return new StateResponse { IsError = true, Message = "Match id may not be null." };
+			string matchSerialized = await service.GetData(Global.MATCHES_TABLE, Global.DEFAULT_PARTITION, request.MatchId, "");
+			if (string.IsNullOrEmpty(matchSerialized))
+				return new StateResponse { IsError = true, Message = "Match not found." };
+			MatchRegistry match = JsonConvert.DeserializeObject<MatchRegistry>(matchSerialized);
+			if (!match.HasPlayer(request.PlayerId))
+				return new StateResponse { IsError = true, Message = "Player is not on that match." };
+			string stateSerialized = await service.GetData(Global.STATES_TABLE, Global.DEFAULT_PARTITION, request.MatchId, "");
+			StateRegistry currentState = JsonConvert.DeserializeObject<StateRegistry>(stateSerialized);
+			if (currentState == null)
+				return new StateResponse { IsError = true, Message = "Service problem when getting current state." };
+			if (currentState.TryGetPrivate(request.PlayerId, Global.RETREATED_KEY, out string value) && value == "1")
+				return new StateResponse { IsError = true, Message = "Player has left match." };
+			StateInfo info = currentState.GetStateInfo(request.PlayerId);
+			if (!match.IsStarted)
+				return new StateResponse { Message = "Match has not started yet.", StateInfo = info };
+			if (match.IsEnded || currentState.IsMatchEnded)
+				return new StateResponse { Message = "Match is ended.", StateInfo = info };
+			currentState = await PrepareTurn(request.PlayerId, match, currentState);
+			info = currentState.GetStateInfo(request.PlayerId);
+			if (currentState.Hash == request.LastHash)
+				return new StateResponse { Message = "It is the same known state.", StateInfo = info };
+			return new StateResponse { StateInfo = info };
+		}
+		catch (Exception e)
+		{
+			return new StateResponse { IsError = true, Message = e.Message };
+		}
+	}
 
-        // ████████████████████████████████████████████ S T A T E ████████████████████████████████████████████
+	#region Private
+	// ███████████████████████████████████████████ P R I V A T E ████████████████████████████████████████████
 
-        public static async Task<StateResponse> GetMatchState (StateRequest request)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(request.PlayerId))
-                    return new StateResponse { IsError = true, Message = "Player id may not be null." };
-                if (string.IsNullOrEmpty(request.MatchId))
-                    return new StateResponse { IsError = true, Message = "Match id may not be null." };
-                MatchRegistry match = await matchService.GetMatchRegistry(request.MatchId);
-                if (match == null)
-                    return new StateResponse { IsError = true, Message = "Match not found." };
-                if (!match.HasPlayer(request.PlayerId))
-                    return new StateResponse { IsError = true, Message = "Player is not on that match." };
-                StateRegistry currentState = await matchService.GetState(request.MatchId);
-                List<ActionRegistry> actions = await matchService.GetActions(request.MatchId);
-                if (currentState == null)
-                    return new StateResponse { IsError = true, Message = "Get state error." };
-                if (currentState.HasAnyPrivatePropertyWithValue("Retreated", "1"))
-                    return new StateResponse { IsError = true, Message = "Player has left match." };
-                StateInfo info = currentState.GetStateInfo(request.PlayerId);
-                if (!match.IsStarted)
-                    return new StateResponse { IsError = true, Message = "Match has not started yet.", StateInfo = info };
-                if (!HasHandshakingFromAllPlayers(currentState, actions))
-                    return new StateResponse { IsError = true, Message = "Not every player is ready.", StateInfo = info };
-                currentState = await PrepareTurn(request.PlayerId, match, currentState, actions);
-                if (info.Hash == request.LastHash)
-                    return new StateResponse { IsError = true, Message = "Current state is the same known state." };
-                return new StateResponse { StateInfo = info };
-            }
-            catch (Exception e)
-            {
-                return new StateResponse { IsError = true, Message = e.Message };
-            }
-        }
+	private static async Task StartMatch (MatchRegistry match, StateRegistry state)
+	{
+		if (match.IsStarted)
+			return;
+		int stateHash = state.Hash;
+		state.TurnNumber = 0;
+		match.IsStarted = true;
+		match.StartTime = DateTimeOffset.UtcNow;
+		await service.UpsertData(Global.MATCHES_TABLE, Global.DEFAULT_PARTITION, match.MatchId, JsonConvert.SerializeObject(match));
+		await service.UpsertData(Global.STATES_TABLE, Global.DEFAULT_PARTITION, match.MatchId, JsonConvert.SerializeObject(state));
+	}
 
-        #region Private
-        // ███████████████████████████████████████████ P R I V A T E ████████████████████████████████████████████
+	private static async Task TryToMatchPlayers (string gameId, string region)
+	{
+		await CheckGameSettings();
+		// Get settings for matchmaking
+		GameRegistry settings = game.Settings;
+		int playerCount = settings.MinPlayersPerMatch;
+		float maxWaitToMatchWithBots = (settings.HasSetting("MaxWait") && float.TryParse(settings.GetValue("MaxWait"), out float wait)) ? wait : 6.0f;
+		string actionForNoPlayers = settings.HasSetting("ActionForNoPlayers") ? settings.GetValue("ActionForNoPlayers") : "MatchWithBots";
+		// Get entries for that region
+		MatchmakingEntry[] entries = (await service.GetAllData(Global.MATCHMAKING_TABLE, Global.DEFAULT_PARTITION, null)).Values
+			.Select(JsonConvert.DeserializeObject<MatchmakingEntry>)
+			.ToArray();
 
-        private static async Task StartMatch (MatchRegistry match, StateRegistry state)
-        {
-            if (match.IsStarted)
-                return;
-            int stateHash = state.Hash;
-            state.TurnNumber = 0;
-            match.IsStarted = true;
-            match.StartTime = DateTime.UtcNow;
-            await matchService.SetMatchRegistry(match);
-            await matchService.SetState(match.MatchId, stateHash, state);
-            await matchService.ScheduleCheckMatch(CHECK_MATCH_DELAY * 1000, match.MatchId, 0);
-        }
+		List<MatchmakingEntry> matchCandidates = new List<MatchmakingEntry>();
+		for (int i = 0; i < entries.Length; i++)
+		{
+			if (entries[i] == null)
+				continue;
+			if (entries[i].Status == MatchmakingStatus.Searching)
+			{
+				matchCandidates.Add(entries[i]);
+				if (entries[i].UseLobby)
+				{
+					await CreateMatch(matchCandidates, false, true);
+					return;
+				}
+			}
+		}
+		while (matchCandidates.Count >= playerCount)
+		{
+			List<MatchmakingEntry> range = matchCandidates.GetRange(0, playerCount);
+			matchCandidates.RemoveRange(0, playerCount);
+			await CreateMatch(range, false, false);
+		}
+		if (matchCandidates.Count == 0)
+			return;
+		DateTimeOffset entriesMaxTimestamp = matchCandidates.Max(e => e.Timestamp);
+		if ((DateTimeOffset.UtcNow - entriesMaxTimestamp).TotalSeconds >= maxWaitToMatchWithBots)
+		{
+			if (actionForNoPlayers == "MatchWithBots")
+			{
+				// Match with bots
+				int candidatesCount = matchCandidates.Count;
+				for (int i = 0; i < playerCount - candidatesCount; i++)
+				{
+					// Add bot entry to the matchmaking table
+					string botId = "X" + Guid.NewGuid().ToString();
+					string botAlias = Guid.NewGuid().ToString();
+					PlayerInfo botInfo = game.CreateBot(settings.BotSettings);
+					matchCandidates.Add(
+						new MatchmakingEntry
+						{
+							PlayerId = botId,
+							PlayerInfoSerialized = JsonConvert.SerializeObject(botInfo),
+							Region = region,
+							Status = MatchmakingStatus.Searching,
+							StatusDescription = MatchmakingStatus.Searching.ToString(),
+							Timestamp = DateTimeOffset.UtcNow
+						});
+				}
+				await CreateMatch(matchCandidates, true, false);
+			}
+			else
+			{
+				foreach (var entry in matchCandidates)
+				{
+					entry.Status = MatchmakingStatus.FailedWithNoPlayers;
+					entry.StatusDescription = MatchmakingStatus.FailedWithNoPlayers.ToString();
+					await service.UpsertData(Global.MATCHMAKING_TABLE, Global.DEFAULT_PARTITION, entry.PlayerId, JsonConvert.SerializeObject(entry));
+				}
+			}
+		}
 
-        private static async Task TryToMatchPlayers (string gameId, string region)
-        {
-            // Get settings for matchmaking
-            GameRegistry gameRegistry = await loginService.GetGameConfig(gameId);
-            int playerCount = (gameRegistry.HasSetting("PlayerCount") && int.TryParse(gameRegistry.GetValue("PlayerCount"), out int count)) ? count : 2;
-            float maxWaitToMatchWithBots = (gameRegistry.HasSetting("MaxWait") && float.TryParse(gameRegistry.GetValue("MaxWait"), out float wait)) ? wait : 6.0f;
-            string actionForNoPlayers = gameRegistry.HasSetting("ActionForNoPlayers") ? gameRegistry.GetValue("ActionForNoPlayers") : "MatchWithBots";
-            // Get entries for that region
-            MatchmakingEntry[] entries = await matchService.GetMatchmakingEntries(region, null, null, null, MatchmakingStatus.Undefined);
+		async Task CreateMatch (List<MatchmakingEntry> entries, bool hasBots, bool isLobby)
+		{
+			string debugLog = "[CreateMatch] Creating ids array  |  ";
+			try
+			{
+				string matchId = Guid.NewGuid().ToString();
+				string[] ids = new string[entries.Count];
+				debugLog += $"Creating infos array  |  ";
+				PlayerInfo[] infos = new PlayerInfo[entries.Count];
+				debugLog += $"Getting a random alias  |  ";
+				string alias = Helper.GetRandomMatchAlias(4, false);
+				for (int i = 0; i < entries.Count; i++)
+				{
+					MatchmakingEntry entry = entries[i];
+					debugLog += $"Analysing entry {entry.PlayerId}  |  ";
+					ids[i] = entry.PlayerId;
+					infos[i] = JsonConvert.DeserializeObject<PlayerInfo>(entry.PlayerInfoSerialized);
+					if (entry.PlayerId[0] == 'X')
+						continue;
+					entry.Alias = alias;
+					entry.MatchId = matchId;
+					entry.Status = isLobby ? MatchmakingStatus.InLobby : MatchmakingStatus.Matched;
+					entry.StatusDescription = entry.Status.ToString();
+					debugLog += $"Upserting matchmaking entry  |  ";
+					string entrySerialized = JsonConvert.SerializeObject(entry);
+					await service.UpsertData(Global.MATCHMAKING_TABLE, Global.DEFAULT_PARTITION, entry.PlayerId, entrySerialized);
+					if (entry.UseLobby)
+						await service.UpsertData(Global.MATCHMAKING_TABLE, Global.DEFAULT_PARTITION, entry.Alias, entrySerialized);
+				}
+				MatchRegistry match = new MatchRegistry
+				{
+					GameId = gameId,
+					MatchId = matchId,
+					CreatedTime = DateTimeOffset.UtcNow,
+					PlayerIds = ids,
+					PlayerInfos = infos,
+					Alias = alias,
+					Region = region,
+					HasBots = hasBots,
+					UseLobby = isLobby,
+				};
+				debugLog += $"Registering match  |  ";
+				await service.UpsertData(Global.MATCHES_TABLE, Global.DEFAULT_PARTITION, matchId, JsonConvert.SerializeObject(match));
+				debugLog += $"Creating first state  |  ";
+				StateRegistry state = await CreateFirstStateAndRegister(match);
+				if (!isLobby)
+				{
+					debugLog += $"Scheduling check match  |  ";
+					await StartMatch(match, state);
+				}
+			}
+			catch (Exception e)
+			{
+				throw new Exception($"Problem creating match: {e.Message}  >>>> {debugLog}\n{e.StackTrace}");
+			}
+		}
+	}
 
-            if (entries != null)
-                Logger.LogWarning($"[TryToMatchPlayers] ! ! ! ! Entries already registered: {JsonConvert.SerializeObject(entries, Formatting.Indented)}");
+	private static async Task<StateRegistry> CreateFirstStateAndRegister (MatchRegistry match)
+	{
+		await CheckGameSettings();
+		StateRegistry newState = game.CreateFirstState(match);
+		if (match.UseLobby)
+			newState.TurnNumber = -1;
+		await service.UpsertData(Global.STATES_TABLE, Global.DEFAULT_PARTITION, match.MatchId, JsonConvert.SerializeObject(newState));
+		return newState;
+	}
 
-            List<MatchmakingEntry> matchCandidates = new List<MatchmakingEntry>();
-            for (int i = 0; i < entries.Length; i++)
-            {
-                if (entries[i] == null)
-                    continue;
-                Logger.LogWarning($"[TryToMatchPlayers] Analysing entry: {JsonConvert.SerializeObject(entries[i], Formatting.Indented)}");
-                if (entries[i].Status == MatchmakingStatus.Searching)
-                {
-                    matchCandidates.Add(entries[i]);
-                    if (entries[i].UseLobby)
-                    {
-                        Logger.LogWarning($"[TryToMatchPlayers] Entry uses lobby");
-                        await CreateMatch(matchCandidates, false, true);
-                        return;
-                    }
-                }
-            }
-            Logger.LogWarning($"[TryToMatchPlayers] Match candidates: {JsonConvert.SerializeObject(matchCandidates.Select(x => JsonConvert.DeserializeObject<PlayerInfo>(x.PlayerInfoSerialized).Nickname))}");
-            while (matchCandidates.Count >= playerCount)
-            {
-                List<MatchmakingEntry> range = matchCandidates.GetRange(0, playerCount);
-                matchCandidates.RemoveRange(0, playerCount);
-                await CreateMatch(range, false, false);
-            }
-            if (matchCandidates.Count == 0)
-                return;
-            DateTime entriesMaxTimestamp = matchCandidates.Max(e => e.Timestamp);
-            if ((DateTime.UtcNow - entriesMaxTimestamp).TotalSeconds >= maxWaitToMatchWithBots)
-            {
-                Logger.LogWarning($"[TryToMatchPlayers] Matching with bots: {JsonConvert.SerializeObject(matchCandidates.Select(x => JsonConvert.DeserializeObject<PlayerInfo>(x.PlayerInfoSerialized).Nickname))}");
-                if (actionForNoPlayers == "MatchWithBots")
-                {
-                    // Match with bots
-                    int candidatesCount = matchCandidates.Count;
-                    for (int i = 0; i < playerCount - candidatesCount; i++)
-                    {
-                        // Add bot entry to the matchmaking table
-                        string botId = "X" + Guid.NewGuid().ToString();
-                        string botAlias = Guid.NewGuid().ToString();
-                        PlayerInfo botInfo = game.CreateBot(gameRegistry.BotSettings);
-                        matchCandidates.Add(
-                            new MatchmakingEntry
-                            {
-                                PlayerId = botId,
-                                PlayerInfoSerialized = JsonConvert.SerializeObject(botInfo),
-                                Region = region,
-                                Status = MatchmakingStatus.Searching,
-                                Timestamp = DateTime.UtcNow
-                            });
-                    }
-                    await CreateMatch(matchCandidates, true, false);
-                }
-                else
-                {
-                    foreach (var item in matchCandidates)
-                    {
-                        item.Status = MatchmakingStatus.FailedWithNoPlayers;
-                        await matchService.UpsertMatchmakingEntry(item);
-                    }
-                }
-            }
-            Logger.LogWarning($"[TryToMatchPlayers] Just wait...");
+	private static async Task<StateRegistry> PrepareTurn (string requesterId, MatchRegistry match, StateRegistry lastState, List<ActionRegistry> actions = null)
+	{
+		string debug = " <PrepareTurn> ";
+		try
+		{
+			if (lastState == null)
+				Logger.LogError("   [PrepareTurn] Last state should not be null.");
+			debug += "Getting actions | ";
+			if (actions == null)
+				actions = (await service.GetAllData(Global.ACTIONS_TABLE, match.MatchId, $"IsProcessed eq 'False'"))
+					.Values.Select(JsonConvert.DeserializeObject<ActionRegistry>)
+					.ToList();
+			debug += "Prep turn in Game | ";
+			StateRegistry newState = game.PrepareTurn(requesterId, match, lastState, actions);
+			if (newState == lastState)
+				return lastState;
+			debug += "Update actions | ";
+			foreach (var action in actions)
+				await service.UpsertData(Global.ACTIONS_TABLE, match.MatchId, action.Id, JsonConvert.SerializeObject(action));
+			string registeredStateSerialized = null;
+			StateRegistry registeredState = null;
+			if (newState.IsMatchEnded && !match.IsEnded)
+			{
+				match.IsEnded = true;
+				match.EndedTime = DateTimeOffset.UtcNow;
+				await service.UpsertData(Global.MATCHES_TABLE, Global.DEFAULT_PARTITION, match.MatchId, JsonConvert.SerializeObject(match));
+				var matchmakingDict = await service.GetAllData(Global.MATCHMAKING_TABLE, Global.DEFAULT_PARTITION, $"MatchId eq '{match.MatchId}'");
+				foreach (var kv in matchmakingDict)
+				{
+					MatchmakingEntry entry = JsonConvert.DeserializeObject<MatchmakingEntry>(kv.Value);
+					await service.DeleteData(Global.MATCHMAKING_TABLE, Global.DEFAULT_PARTITION, entry.PlayerId);
+				}
+				registeredStateSerialized = await service.GetData(Global.STATES_TABLE, Global.DEFAULT_PARTITION, match.MatchId, "");
+				registeredState = JsonConvert.DeserializeObject<StateRegistry>(registeredStateSerialized);
+				if (registeredState != lastState)
+				{
+					Logger.LogError("   [PrepareTurn] States didn't match, retrying....");
+					debug += "RE-Prepare turn | ";
+					return await PrepareTurn(requesterId, match, registeredState, actions.Where(a => !a.IsProcessed).ToList());
+				}
+				await service.UpsertData(Global.STATES_TABLE, Global.DEFAULT_PARTITION, match.MatchId, JsonConvert.SerializeObject(newState));
+				return newState;
+			}
+			debug += "Setting new state | ";
+			registeredStateSerialized = await service.GetData(Global.STATES_TABLE, Global.DEFAULT_PARTITION, match.MatchId, "");
+			registeredState = JsonConvert.DeserializeObject<StateRegistry>(registeredStateSerialized);
+			if (registeredState != lastState)
+			{
+				Logger.LogError("   [PrepareTurn] States didn't match, retrying....");
+				debug += "RE-Prepare turn | ";
+				return await PrepareTurn(requesterId, match, registeredState, actions.Where(a => !a.IsProcessed).ToList());
+			}
+			await service.UpsertData(Global.STATES_TABLE, Global.DEFAULT_PARTITION, match.MatchId, JsonConvert.SerializeObject(newState));
+			return newState;
+		}
+		catch (Exception e)
+		{
+			throw new Exception($"{e.Message} >>> {debug} \nStack Trace:\n{e.StackTrace}");
+		}
+	}
 
-            async Task CreateMatch (List<MatchmakingEntry> entries, bool hasBots, bool isLobby)
-            {
-                string matchId = Guid.NewGuid().ToString();
-                Logger.LogWarning($"[CreateMatch] Creating ids array");
-                string[] ids = new string[entries.Count];
-                Logger.LogWarning($"[CreateMatch] Creating infos array");
-                PlayerInfo[] infos = new PlayerInfo[entries.Count];
-                Logger.LogWarning($"[CreateMatch] Getting a random alias");
-                string alias = Helper.GetRandomMatchAlias();
-                for (int i = 0; i < entries.Count; i++)
-                {
-                    MatchmakingEntry entry = entries[i];
-                    Logger.LogWarning($"[CreateMatch] Analysing entry {JsonConvert.SerializeObject(entry, Formatting.Indented)}");
-                    ids[i] = entry.PlayerId;
-                    infos[i] = JsonConvert.DeserializeObject<PlayerInfo>(entry.PlayerInfoSerialized);
-                    if (entry.PlayerId[0] == 'X')
-                        continue;
-                    entry.Alias = alias;
-                    entry.MatchId = matchId;
-                    entry.Status = isLobby ? MatchmakingStatus.InLobby : MatchmakingStatus.Matched;
-                    Logger.LogWarning($"[CreateMatch] Upserting matchmaking entry");
-                    await matchService.UpsertMatchmakingEntry(entry);
-                }
-                MatchRegistry match = new MatchRegistry
-                {
-                    GameId = gameId,
-                    MatchId = matchId,
-                    CreatedTime = DateTime.UtcNow,
-                    PlayerIds = ids,
-                    PlayerInfos = infos,
-                    Alias = alias,
-                    Region = region,
-                    HasBots = hasBots,
-                    UseLobby = isLobby,
-                };
-                Logger.LogWarning($"[CreateMatch] Registering match");
-                await matchService.SetMatchRegistry(match);
-                Logger.LogWarning($"[CreateMatch] Creating first state");
-                StateRegistry state = await CreateFirstStateAndRegister(match);
-                Logger.LogWarning($"[CreateMatch] Scheduling check match");
-                if (isLobby)
-                    await matchService.ScheduleCheckMatch(LOBBY_DURATION * 1000, matchId, 0);
-                else
-                    await StartMatch(match, state);
-            }
-        }
-
-        private static async Task<StateRegistry> CreateFirstStateAndRegister (MatchRegistry match)
-        {
-            StateRegistry newState = game.CreateFirstState(match);
-            if (match.UseLobby)
-                newState.TurnNumber = -1;
-            await matchService.SetState(match.MatchId, null, newState);
-            return newState;
-        }
-
-        private static async Task<StateRegistry> PrepareTurn (string requesterId, MatchRegistry match, StateRegistry lastState, List<ActionRegistry> actions = null)
-        {
-            string debug = " <PrepareTurn> ";
-            try
-            {
-                if (lastState == null)
-                    Logger.LogError("   [PrepareTurn] Last state should not be null.");
-                debug += "Getting actions | ";
-                if (actions == null)
-                    actions = await matchService.GetActions(match.MatchId);
-                debug += "Prep turn in Game | ";
-                StateRegistry newState = game.PrepareTurn(requesterId, match, lastState, actions);
-                debug += "Update actions | ";
-                await matchService.UpdateActions(match.MatchId, actions);
-                if (newState.IsMatchEnded && !match.IsEnded)
-                {
-                    match.IsEnded = true;
-                    await matchService.SetMatchRegistry(match);
-                    await matchService.DeleteMatchmakingHistory(null, match.MatchId);
-                    if (!await matchService.SetState(match.MatchId, lastState.Hash, newState))
-                    {
-                        Logger.LogError("   [PrepareTurn] States didn't match, retrying....");
-                        return await PrepareTurn(requesterId, match, await matchService.GetState(match.MatchId), actions);
-                    }
-                    GameRegistry gameRegistry = await loginService.GetGameConfig(match.GameId);
-                    await matchService.ScheduleCheckMatch(gameRegistry.FinalCheckMatchDelay * 1000, match.MatchId, newState.Hash);
-                    return newState;
-                }
-                if (lastState != null && newState.Hash == lastState.Hash)
-                    return lastState;
-                debug += "Setting new state | ";
-                if (!await matchService.SetState(match.MatchId, lastState.Hash, newState))
-                {
-                    Logger.LogError("   [PrepareTurn] States didn't match, retrying....");
-                    debug += "RE-Prepare turn | ";
-                    return await PrepareTurn(requesterId, match, await matchService.GetState(match.MatchId), actions);
-                }
-                return newState;
-            }
-            catch (Exception e)
-            {
-                throw new Exception($"{e.Message} >>> {debug}");
-            }
-        }
-
-        private static bool HasHandshakingFromAllPlayers (StateRegistry state, List<ActionRegistry> actions)
-        {
-            string[] players = state.GetPlayers();
-            int count = 0;
-            string playersWithHandshaking = "";
-            foreach (var player in players)
-                if (player[0] == 'X' 
-                    || !string.IsNullOrEmpty(state.GetPrivate(player, "Handshaking")) 
-                    || (actions.Find(x => x.PlayerId == player && x.Action.IsPrivateChangeEqualsIfPresent("Handshaking", "1")) != null))
-                {
-                    count++;
-                    playersWithHandshaking += $"| {player}";
-                }
-            if (count != players.Length)
-                Logger.LogError($"   [HasHandshakingFromAllPlayers] Player with handshaking = {count} = {playersWithHandshaking}\r\n  >>>  STATE  >>>>\r\n{JsonConvert.SerializeObject(state, Formatting.Indented)}\r\n   >>>   ACTIONS   >>>\r\n{JsonConvert.SerializeObject(actions, Formatting.Indented)}");
-            return count == players.Length;
-        }
-        #endregion
-    }
+	public static async Task CheckGameSettings ()
+	{
+		string settingsSerialized = await service.GetData(Global.DATA_TABLE, Global.GAME_PARTITION, game.Name, "");
+		GameRegistry settings = null;
+		if (string.IsNullOrEmpty(settingsSerialized))
+		{
+			Logger.LogError("Game has no settings. Creating a default one.");
+			settings = new GameRegistry();
+			await service.UpsertData(Global.DATA_TABLE, Global.GAME_PARTITION, game.Name, JsonConvert.SerializeObject(settings));
+		}
+		else
+			settings = JsonConvert.DeserializeObject<GameRegistry>(settingsSerialized);
+		game.SetSettings(settings);
+	}
+	#endregion
 }

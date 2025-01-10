@@ -2,8 +2,8 @@
 using Azure.Data.Tables;
 using Azure.Storage.Blobs.Specialized;
 using Azure.Storage.Queues;
-using Kalkatos.FunctionsGame.Registry;
-using Kalkatos.FunctionsGame.ShadowAlchemy;
+using Kalkatos.Network.Registry;
+using Kalkatos.Network.ShadowAlchemy;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -13,7 +13,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Kalkatos.FunctionsGame.Azure
+namespace Kalkatos.Network.Azure
 {
 
     public class AzureService : ILoginService, IMatchService, ILeaderboardService, IDataService, IAnalyticsService, IAsyncService

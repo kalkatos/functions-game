@@ -1,6 +1,6 @@
 ﻿using Kalkatos.Network.Model;
 
-namespace Kalkatos.FunctionsGame
+namespace Kalkatos.Network
 {
     internal class TempAsyncGame : IAsyncGame
     {

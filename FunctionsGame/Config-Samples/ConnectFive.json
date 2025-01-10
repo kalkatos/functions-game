@@ -1,0 +1,14 @@
+{
+  "CheckMatchDelay": 300,
+  "LobbyDuration": 600,
+  "MinPlayersPerMatch": 2,
+  "MaxPlayersPerMatch": 4,
+  "DefaultPlayerCustomData": {},
+  "Settings": {
+    "TurnDuration": "30",
+    "ObjectivePieceCount": "3",
+    "PieceAmount": "5",
+    "MaxWaitForSync": "20"
+  },
+  "BotSettings": {}
+}

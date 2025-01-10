@@ -1,9 +1,8 @@
 ﻿using System.Threading.Tasks;
 
-namespace Kalkatos.FunctionsGame
+namespace Kalkatos.Network;
+
+public interface IAnalyticsService
 {
-    public interface IAnalyticsService
-    {
-        Task SendEvent (string playerId, string key, string value);
-    }
+	Task SendEvent (string playerId, string key, string value);
 }

@@ -1,18 +1,20 @@
 ﻿using Kalkatos.Network.Model;
+using Newtonsoft.Json;
+using System;
 using System.Threading.Tasks;
 
-namespace Kalkatos.FunctionsGame
-{
-    public static class AnalyticsFunctions
-    {
-        private static IAnalyticsService service = GlobalConfigurations.AnalyticsService;
+namespace Kalkatos.Network;
 
-        public static async Task<Response> SendEvent (string playerId, string key, string value)
-        {
-            if (string.IsNullOrEmpty(playerId) || string.IsNullOrEmpty(key))
-                return new Response { IsError = true, Message = "Wrong parameters. PlayerId and Key must not be null." };
-            await service.SendEvent(playerId, key, value);
-            return new Response { IsError = false, Message = "OK" };
-        }
-    }
+public static class AnalyticsFunctions
+{
+	private static IService service = Global.Service;
+
+	public static async Task<Response> SendEvent (string playerId, string key, string value)
+	{
+		if (string.IsNullOrEmpty(playerId) || string.IsNullOrEmpty(key))
+			return new Response { IsError = true, Message = "Wrong parameters. PlayerId and Key must not be null." };
+		var data = new { Key = key, Value = value };
+		await service.UpsertData(Global.ANALYTICS_TABLE, playerId, Guid.NewGuid().ToString(), JsonConvert.SerializeObject(data));
+		return new Response { IsError = false, Message = "OK" };
+	}
 }

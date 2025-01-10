@@ -1,12 +1,11 @@
-﻿using Kalkatos.FunctionsGame.Registry;
+﻿using Kalkatos.Network.Registry;
 using System.Threading.Tasks;
 
-namespace Kalkatos.FunctionsGame
+namespace Kalkatos.Network;
+
+public interface IAsyncService
 {
-    public interface IAsyncService
-    {
-        Task<AsyncObjectRegistry> GetAsyncObject (string region, string id);
-        Task<AsyncObjectRegistry[]> GetAsyncObjects (string region);
-        Task UpsertAsyncObject (AsyncObjectRegistry registry);
-    }
+	Task<AsyncObjectRegistry> GetAsyncObject (string region, string id);
+	Task<AsyncObjectRegistry[]> GetAsyncObjects (string region);
+	Task UpsertAsyncObject (AsyncObjectRegistry registry);
 }

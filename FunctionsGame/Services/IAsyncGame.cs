@@ -1,9 +1,11 @@
 ﻿using Kalkatos.Network.Model;
+using Kalkatos.Network.Registry;
+using System.Threading.Tasks;
 
-namespace Kalkatos.FunctionsGame
+namespace Kalkatos.Network;
+
+public interface IAsyncGame
 {
-    public interface IAsyncGame
-    {
-        bool IsCorrectRequest (AddAsyncObjectRequest request);
-    }
+	bool IsCorrectRequest (AddAsyncObjectRequest request);
+	Task TreatObjectAdded (AsyncObjectRegistry newRegistry);
 }

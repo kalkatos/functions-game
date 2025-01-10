@@ -1,5 +1,5 @@
 ﻿using Azure.Storage.Blobs.Specialized;
-using Kalkatos.FunctionsGame.Registry;
+using Kalkatos.Network.Registry;
 using Kalkatos.Network.Model;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
@@ -12,7 +12,7 @@ using System.Text;
 using System.Threading.Tasks;
 using QueueTriggerAttribute = Microsoft.Azure.WebJobs.QueueTriggerAttribute;
 
-namespace Kalkatos.FunctionsGame.Azure
+namespace Kalkatos.Network.Azure
 {
     public static class AzureReceptor
     {
